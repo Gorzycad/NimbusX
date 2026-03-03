@@ -1,0 +1,65 @@
+.staff-selector {
+  margin-bottom: 1rem;
+}
+
+.staff-selector__label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.staff-selector__header {
+  padding: 10px;
+  background: #f1f1f1;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.staff-selector__options {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* This is the key part for alignment */
+.staff-selector__option {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr); /* 7 columns of equal width */
+  align-items: center;   /* vertically center within the grid cell — MDN */
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.staff-selector__checkbox {
+  grid-column: 1 / 2;     /* place checkbox in first column */
+  justify-self: start;    /* align it to the start (left) of that grid cell */
+  margin: 0;
+  padding: 0;
+}
+
+.staff-selector__text {
+  grid-column: 2 / 7;     /* place text spanning from col 2 to col 6 (or 7) */
+  justify-self: start;    /* align text to the start of its grid cell */
+  line-height: 1.2;
+}
+
+.staff-role-group {
+  padding: 5px 0;
+}
+
+.staff-role-title {
+  font-weight: bold;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  color: #333;
+  padding-left: 20px; /*Indent Roles only*/
+}
+
+.staff-name {
+  padding-left: 0; /* indent staff names */
+}

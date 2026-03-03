@@ -1,0 +1,24 @@
+# Node dependencies
+node_modules/
+
+# React build output
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Electron packaged output
+dist/
+
+# Secrets
+*.json
+config.json
+*.env
+service-account*.json
+serviceAccountKey*.json
+hvac-app/functions/*.json

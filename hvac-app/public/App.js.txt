@@ -1,0 +1,83 @@
+import React, { useState } from "react";
+
+function FormToSheet() {
+  const [result, setResult] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const name1 = e.target.name1.value.trim();
+    const name2 = e.target.name2.value.trim();
+    const name3 = e.target.name3.value.trim();
+    const name4 = e.target.name4.value.trim();
+
+    if (!name1 || !name2 || !name3 || !name4) {
+      alert("All fields are required.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name1, name2, name3, name4 }),
+      });
+
+      const data = await res.json();
+      setResult(data);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setResult({ error: "Network or server error" });
+    }
+  };
+
+  return (
+    <div style={{ padding: 20 }}>
+      <h1>React to Google Sheet</h1>
+      <form onSubmit={handleSubmit}>
+        <label>Name1:</label><br />
+        <input name="name1" placeholder="Name1" /><br />
+        <label>Name2:</label><br />
+        <input name="name2" placeholder="Name2" /><br />
+        <label>Name3:</label><br />
+        <input name="name3" placeholder="Name3" /><br />
+        <label>Name4:</label><br />
+        <input name="name4" placeholder="Name4" /><br /><br />
+        <button type="submit">Submit</button>
+      </form>
+
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          {result.error ? (
+            <div style={{ color: "red" }}>{result.error}</div>
+          ) : (
+            <div>
+              <h3>Result from Sheet2:</h3>
+              {Array.isArray(result.result) ? (
+                <table border="1" cellPadding="6">
+                  <thead>
+                    <tr>
+                      {result.result.map((_, idx) => (
+                        <th key={idx}>{String.fromCharCode(65 + idx)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {result.result.map((val, idx) => (
+                        <td key={idx}>{val}</td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              ) : (
+                <div>{result.result}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default FormToSheet;

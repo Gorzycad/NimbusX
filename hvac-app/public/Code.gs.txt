@@ -1,0 +1,40 @@
+//App Script
+
+function doGet(e) {
+  // Forward GET request to doPost
+  return doPost({ postData: { contents: JSON.stringify(e.parameter) } });
+}
+
+function doPost(e) {
+  let data = {};
+  try {
+    data = JSON.parse(e.postData.contents);
+  } catch (err) {
+    data = e.parameter || {};
+  }
+
+  const a = String(data.Name1 || "");
+  const b = String(data.Name2 || "");
+  const c = String(data.Name3 || "");
+  const d = String(data.Name4 || "");
+
+  const ss = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1HHvpMCA3CuLGATeOfHPbNq3Jxt-ne-uM5kBgsywfOiY/edit#gid=0");
+  const sheet1 = ss.getSheetByName("Sheet1");
+  const sheet2 = ss.getSheetByName("Sheet2");
+
+  // Always overwrite column 1
+const col = 1;
+sheet1.getRange(1, col).setValue(a);
+sheet1.getRange(2, col).setValue(b);
+sheet1.getRange(3, col).setValue(c);
+sheet1.getRange(4, col).setValue(d);
+
+  // Read calculation from Sheet2 (single cell or array)
+  let output = sheet2.getRange("A5").getValue(); // single value
+  // if multiple outputs needed: sheet2.getRange("A1:E1").getValues()[0];
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ result: output }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
