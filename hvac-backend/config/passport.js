@@ -32,6 +32,6 @@ passport.deserializeUser((user, done) => {
   done(null, user);
 });
 
-return passport;
+// return passport;
 
 }

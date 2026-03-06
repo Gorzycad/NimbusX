@@ -36,11 +36,11 @@ const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
 export default function CompanyDashboard() {
-  const { currentUser, role, userData, loading } = useAuth();
+  const { user, role, userData } = useAuth();
   const [savedDetails, setSavedDetails] = useState(null);
   const [notifications, setNotifications] = useState([]);
 
-  const companyId = userData?.companyId;
+  const companyId = userData?.companyId || null;
   const normalizedRole = role?.toLowerCase();
 
   const handleProjectSave = (details) => setSavedDetails(details);

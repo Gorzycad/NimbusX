@@ -2,10 +2,9 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu, dialog } from "electron";
 import { fileURLToPath } from "url";
 import { startServer } from "../hvac-backend/server.js";
-import { dialog } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 
@@ -43,6 +42,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+    title: "NimbusX", // ✅ Window title
+    icon: path.join(__dirname, "assets/icons/vault.png"), // PNG exported from Lucide
   });
 
   if (isDev) {
@@ -53,7 +54,8 @@ function createWindow() {
     console.log("Loading:", indexPath);
     mainWindow.loadFile(indexPath);
   }
-
+  // Remove default menu
+  Menu.setApplicationMenu(null);
 }
 
 autoUpdater.on("update-downloaded", () => {
@@ -69,16 +71,21 @@ autoUpdater.on("update-downloaded", () => {
 
 // Start backend first, then frontend
 app.whenReady().then(() => {
-  backendServer = startServer(CONFIG);
-  createWindow();
-  
-  // Only check for updates in production
-  if (!isDev) {
-    // Enable updater logging
-    autoUpdater.logger = console;
-    autoUpdater.logger.transports.file.level = "info";
-    autoUpdater.checkForUpdatesAndNotify();
+  try {
+    backendServer = startServer(CONFIG);
+    createWindow();
+
+    // Only check for updates in production
+    if (!isDev) {
+      // Enable updater logging
+      autoUpdater.logger = console;
+      autoUpdater.logger.transports.file.level = "info";
+      autoUpdater.checkForUpdatesAndNotify();
+    }
+  } catch (err) {
+    console.error("Backend failed to start:", err);
   }
+
 });
 
 // Gracefully close backend on exit

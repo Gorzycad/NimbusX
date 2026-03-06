@@ -1,153 +1,3 @@
-// // src/components/auth/Login.jsx
-// import React, { useState } from "react";
-// import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
-// import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-// import { db } from "../../firebase/firebase";
-// import { useNavigate, Link } from "react-router-dom";
-
-// export default function Login() {
-//   const [form, setForm] = useState({ email: "", password: "" });
-//   const [loading, setLoading] = useState(false);
-//   const [showPassword, setShowPassword] = useState(false);
-//   const navigate = useNavigate();
-
-//   const handleChange = (key, value) =>
-//     setForm((prev) => ({ ...prev, [key]: value }));
-
-//   const handleSubmit = async (e) => {
-//     e.preventDefault();
-//     setLoading(true);
-
-//     try {
-//       // Clear previous session
-//       localStorage.clear();
-
-//       const auth = getAuth();
-//       const userCred = await signInWithEmailAndPassword(
-//         auth,
-//         form.email.trim(),
-//         form.password
-//       );
-
-//       const uid = userCred.user.uid;
-
-//       // Enforce email verification
-//       if (!userCred.user.emailVerified) {
-//         await signOut(auth);
-//         alert("Please verify your email before logging in.");
-//         setLoading(false);
-//         return;
-//       }
-
-//       // Try to get companyId from localStorage first
-//       let companyId = localStorage.getItem("companyId");
-
-//       // If not in localStorage, fetch from Firestore
-//       let userData = null;
-//       if (!companyId) {
-//         const companiesSnap = await getDocs(collection(db, "companies"));
-//         for (const companyDoc of companiesSnap.docs) {
-//           const uidRef = doc(db, `companies/${companyDoc.id}/users/${uid}`);
-//           const uidSnap = await getDoc(uidRef);
-//           if (uidSnap.exists()) {
-//             userData = uidSnap.data();
-//             companyId = companyDoc.id;
-//             // Cache locally
-//             localStorage.setItem("companyId", companyId);
-//             localStorage.setItem("user", JSON.stringify(userData));
-//             localStorage.setItem("role", (userData.role || "guest").toLowerCase());
-//             break;
-//           }
-//         }
-//       }
-
-//       if (!companyId || !userData) {
-//         alert("User not found in any company. Please contact your admin.");
-//         await signOut(auth);
-//         setLoading(false);
-//         return;
-//       }
-
-//       // If userData not already fetched, get it now
-//       if (!userData) {
-//         const userRef = doc(db, `companies/${companyId}/users/${uid}`);
-//         const userSnap = await getDoc(userRef);
-//         if (userSnap.exists()) {
-//           userData = userSnap.data();
-//           localStorage.setItem("user", JSON.stringify(userData));
-//           localStorage.setItem("role", (userData.role || "guest").toLowerCase());
-//         } else {
-//           alert("User profile not found. Please contact your admin.");
-//           await signOut(auth);
-//           setLoading(false);
-//           return;
-//         }
-//       }
-
-//       console.log("✅ Login successful:", userData, companyId);
-
-//       // HARD redirect to dashboard
-//       window.location.href = "/CompanyDashboard";
-//     } catch (err) {
-//       console.error("❌ Login error:", err);
-//       alert("Login failed: " + (err?.message || err));
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   return (
-//     <div style={{ maxWidth: 400, margin: "60px auto", padding: 20 }}>
-//       <h2>Sign In</h2>
-//       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-//         <input
-//           type="email"
-//           placeholder="Email"
-//           value={form.email}
-//           onChange={(e) => handleChange("email", e.target.value)}
-//         />
-
-//         <div style={{ position: "relative" }}>
-//           <input
-//             type={showPassword ? "text" : "password"}
-//             placeholder="Password"
-//             value={form.password}
-//             onChange={(e) => handleChange("password", e.target.value)}
-//             style={{ width: "100%", paddingRight: "50px" }}
-//           />
-//           <span
-//             onClick={() => setShowPassword((prev) => !prev)}
-//             style={{
-//               position: "absolute",
-//               right: 10,
-//               top: "50%",
-//               transform: "translateY(-50%)",
-//               cursor: "pointer",
-//               fontSize: "12px",
-//               color: "#007bff",
-//               userSelect: "none",
-//             }}
-//           >
-//             {showPassword ? "Hide" : "Show"}
-//           </span>
-//         </div>
-
-//         <button type="submit" disabled={loading}>
-//           {loading ? "Signing in..." : "Sign In"}
-//         </button>
-//       </form>
-
-//       <div style={{ marginTop: 12 }}>
-//         Don’t have an account? <Link to="/register">Register</Link>
-//       </div>
-//       <div style={{ marginTop: 12 }}>
-//         Forgot your password? <Link to="/forgotpassword">Reset password</Link>
-//       </div>
-//     </div>
-//   );
-// }
-
-
 // src/components/auth/Login.jsx
 import React, { useState } from "react";
 import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
@@ -156,16 +6,86 @@ import { db } from "../../firebase/firebase";
 import { useNavigate, Link } from "react-router-dom";
 import { setDoc } from "firebase/firestore";
 import { serverTimestamp } from "firebase/firestore";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function Login() {
+  const { setIsLoggedIn } = useAuth(); // ✅ add this
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  
+
   const handleChange = (key, value) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+//   const handleSubmit = async (e) => {
+//   e.preventDefault();
+//   setLoading(true);
+
+//   try {
+//     // Clear any previous session
+//     localStorage.clear();
+
+//     const auth = getAuth();
+//     const userCred = await signInWithEmailAndPassword(
+//       auth,
+//       form.email.trim(),
+//       form.password
+//     );
+
+//     const firebaseUser = userCred.user;
+
+//     // Email verification
+//     if (!firebaseUser.emailVerified) {
+//       await signOut(auth);
+//       alert("Please verify your email before logging in.");
+//       setLoading(false);
+//       return;
+//     }
+
+//     const uid = firebaseUser.uid;
+
+//     // Force token refresh to get latest custom claims
+//     await firebaseUser.getIdToken(true);
+
+//     // Sync global user profile in Firestore
+//     await setDoc(
+//       doc(db, "users", uid),
+//       {
+//         displayName: firebaseUser.displayName || form.email.split("@")[0],
+//         email: firebaseUser.email,
+//         lastLoginAt: serverTimestamp(),
+//       },
+//       { merge: true }
+//     );
+
+//     const userSnap = await getDoc(doc(db, "users", uid));
+//     if (!userSnap.exists()) throw new Error("User not found");
+
+//     let userData = userSnap.data();
+//     let companyId = userData.companyId || "GLOBAL"; // fallback
+
+//     // Cache user info locally
+//     localStorage.setItem("user", JSON.stringify(userData));
+//     localStorage.setItem("role", (userData.role || "guest").toLowerCase());
+//     localStorage.setItem("companyId", companyId);
+
+//     console.log("✅ Login successful:", userData, companyId);
+
+//     // Navigate to dashboard, then immediately reload page to apply state
+//     navigate("/CompanyDashboard", { replace: true });
+//     setTimeout(() => {
+//       window.location.reload();
+//     }, 50); // small delay ensures route change before reload
+
+//   } catch (err) {
+//     console.error("❌ Login error:", err);
+//     alert("Login failed: " + (err?.message || err));
+//   } finally {
+//     setLoading(false);
+//   }
+// };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -218,6 +138,8 @@ export default function Login() {
         const role = globalUser.role?.toLowerCase();
 
         if (["developer", "app_support", "market_agent"].includes(role)) {
+
+          localStorage.setItem("companyId", "GLOBAL"); // important
           localStorage.setItem(
             "user",
             JSON.stringify({
@@ -227,12 +149,16 @@ export default function Login() {
             })
           );
           localStorage.setItem("role", role);
+          localStorage.setItem("isLoggedIn", "true");
+          setIsLoggedIn(true); // if you import useAuth
 
-          // ...after successful login:
-          navigate("/CompanyDashboard", { replace: true });
-          //window.location.reload();
           //window.location.href = "/CompanyDashboard";
-          return; // 🚨 STOP HERE — no company lookup
+          navigate("/CompanyDashboard", { replace: true });
+          setTimeout(() => {
+           window.location.reload();
+         }, 10); // tiny delay ensures route update triggers first
+          
+         return;
         }
       }
 
@@ -252,8 +178,8 @@ export default function Login() {
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) throw new Error("User not found");
 
-      const userData = userSnap.data();
-      const companyId = userData.companyId;
+      let userData = userSnap.data();
+      let companyId = userData.companyId;
 
       if (!companyId) {
         const companiesSnap = await getDocs(collection(db, "companies"));
@@ -296,6 +222,8 @@ export default function Login() {
             "role",
             (userData.role || "guest").toLowerCase()
           );
+          localStorage.setItem("isLoggedIn", "true");
+          setIsLoggedIn(true); // if you import useAuth
         } else {
           alert("User profile not found. Please contact your admin.");
           await signOut(auth);
@@ -308,9 +236,13 @@ export default function Login() {
 
       // HARD redirect to dashboard
       // ...after successful login:
-      navigate("/CompanyDashboard", { replace: true });
-      //window.location.reload();
       //window.location.href = "/CompanyDashboard";
+      
+      navigate("/CompanyDashboard", { replace: true });
+      setTimeout(() => {
+        window.location.reload();
+      }, 10); // tiny delay ensures route update triggers first
+     
     } catch (err) {
       console.error("❌ Login error:", err);
       alert("Login failed: " + (err?.message || err));

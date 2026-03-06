@@ -5,6 +5,7 @@ import multer from "multer";
 import fs from "fs";
 import axios from "axios";
 import session from "express-session";
+import passport from "passport";
 
 // Import routes
 import authRoutes from "./routes/auth.js";
@@ -13,6 +14,7 @@ import downloadRoutes from "./routes/download.js";
 import createOAuthClient from "./google/oauthClient.js";
 import generateAuthUrl from "./generateToken.js";
 import handleGoogleTokenFlow from "./getRefreshToken.js";
+import configurePassport from "./config/passport.js";
 
 export function startServer(CONFIG) {
   if (!CONFIG) {
