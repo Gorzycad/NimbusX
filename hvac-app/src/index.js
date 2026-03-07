@@ -27,14 +27,6 @@ root.render(
           <Route path="/forgotpassword" element={<ForgotPassword />} />
 
           {/* Protected Dashboard */}
-          {/* <Route
-            path="/CompanyDashboard/*"
-            element={
-              <ProtectedRoute page="CompanyDashboard">
-                <CompanyDashboard />
-              </ProtectedRoute>
-            }
-          /> */}
           <Route
             path="/CompanyDashboard/*"
             element={

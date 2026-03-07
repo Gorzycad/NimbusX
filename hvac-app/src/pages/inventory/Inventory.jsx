@@ -11,9 +11,6 @@ const createRows = (count, fields) =>
     fields.reduce((acc, f) => ({ ...acc, [f]: "" }), {})
   );
 
-
-
-
 export default function InventoryPage() {
   const { companyId } = useAuth();
 
@@ -472,55 +469,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
-
-// // src/pages/inventory/Inventory.jsx
-// import React from "react";
-// import { Container, Card } from "react-bootstrap";
-// import { useAuth } from "../../contexts/AuthContext";
-// import "bootstrap/dist/css/bootstrap.min.css";
-
-// export default function Inventory() {
-//   const { user } = useAuth();
-
-//   return (
-//     <Container
-//       fluid
-//       className="d-flex align-items-center justify-content-center"
-//       style={{ minHeight: "70vh" }}
-//     >
-//       <Card
-//         className="text-center shadow-sm"
-//         style={{ maxWidth: 600, width: "100%" }}
-//       >
-//         <Card.Body>
-//           <Card.Title style={{ fontSize: 26, marginBottom: 12 }}>
-//             Inventory Module
-//           </Card.Title>
-
-//           <Card.Text style={{ fontSize: 16, color: "#555" }}>
-//             🚧 This page is currently under development.
-//           </Card.Text>
-
-//           <Card.Text style={{ fontSize: 15, color: "#777" }}>
-//             Inventory management features such as stock tracking, item
-//             allocation, and usage reports will be available soon.
-//           </Card.Text>
-
-//           <div
-//             style={{
-//               marginTop: 20,
-//               padding: 12,
-//               background: "#f8f9fa",
-//               borderRadius: 6,
-//               fontSize: 14,
-//               color: "#333",
-//             }}
-//           >
-//             Thank you for your patience{user?.displayName ? `, ${user.displayName}` : ""}.
-//           </div>
-//         </Card.Body>
-//       </Card>
-//     </Container>
-//   );
-// }

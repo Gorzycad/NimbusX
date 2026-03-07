@@ -58,10 +58,3 @@ export const getReportsByDate = async (companyId, start, end) => {
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 };
-
-// //When Calling these fron a React page
-// const { companyId } = useAuth();
-
-// const execReports = await fetchExecutionReports(companyId);
-// const pos = await fetchPurchaseOrders(companyId);
-// const staff = await fetchStaff(companyId);

@@ -371,7 +371,7 @@ export default function Sidebar() {
 
             }}
           >
-            NimbusX
+            NimbusX v1.0.2
           </p>
         </div>
 

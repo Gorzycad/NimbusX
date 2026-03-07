@@ -80,7 +80,7 @@ export default function Register() {
     return `${candidate}${Date.now().toString().slice(-4)}`;
   };
 
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -275,18 +275,6 @@ export default function Register() {
           </span>
         </div>
 
-        {/* <select
-          value={form.role}
-          onChange={(e) => handleChange("role", e.target.value)}
-          required
-        >
-          <option value="">Select Role</option>
-          {ROLE_OPTIONS.map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select> */}
-
-
         <select
           value={form.role}
           onChange={(e) => handleChange("role", e.target.value)}
@@ -343,22 +331,6 @@ export default function Register() {
               )}
             </div>
 
-            {/* <div>
-              <label>Company ID (auto-generated)</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input value={generatedId} readOnly />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newId = generate5DigitId();
-                    setGeneratedId(newId);
-                    setCompanyId(newId);
-                  }}
-                >
-                  Regenerate
-                </button>
-              </div>
-            </div> */}
             <div>
               <label>Company ID (5 digits)</label>
 
@@ -402,13 +374,6 @@ export default function Register() {
 
           </>
         ) : (
-          // <div>
-          //   <label>Company ID</label>
-          //   <input
-          //     value={companyId}
-          //     onChange={(e) => setCompanyId(e.target.value.trim())}
-          //   />
-          // </div>
           <div>
             <label>Company ID</label>
             <input

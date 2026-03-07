@@ -1,53 +1,3 @@
-// // src/pages/maintenance/Maintenance.jsx
-// import React from "react";
-// import { Container, Card } from "react-bootstrap";
-// import { useAuth } from "../../contexts/AuthContext";
-// import "bootstrap/dist/css/bootstrap.min.css";
-
-// export default function Maintenance() {
-//   const { user } = useAuth();
-
-//   return (
-//     <Container
-//       fluid
-//       className="d-flex align-items-center justify-content-center"
-//       style={{ minHeight: "70vh" }}
-//     >
-//       <Card
-//         className="text-center shadow-sm"
-//         style={{ maxWidth: 600, width: "100%" }}
-//       >
-//         <Card.Body>
-//           <Card.Title style={{ fontSize: 26, marginBottom: 12 }}>
-//             Maintenance Module
-//           </Card.Title>
-
-//           <Card.Text style={{ fontSize: 16, color: "#555" }}>
-//             🚧 This page is currently under development.
-//           </Card.Text>
-
-//           <Card.Text style={{ fontSize: 15, color: "#777" }}>
-//             Maintenance management features will be available soon.
-//           </Card.Text>
-
-//           <div
-//             style={{
-//               marginTop: 20,
-//               padding: 12,
-//               background: "#f8f9fa",
-//               borderRadius: 6,
-//               fontSize: 14,
-//               color: "#333",
-//             }}
-//           >
-//             Thank you for your patience{user?.displayName ? `, ${user.displayName}` : ""}.
-//           </div>
-//         </Card.Body>
-//       </Card>
-//     </Container>
-//   );
-// }
-
 import React, { useState } from "react";
 import { Button, Form, Card } from "react-bootstrap";
 
@@ -198,3 +148,53 @@ export default function Maintenance() {
     </div>
   );
 }
+
+// // src/pages/maintenance/Maintenance.jsx
+// import React from "react";
+// import { Container, Card } from "react-bootstrap";
+// import { useAuth } from "../../contexts/AuthContext";
+// import "bootstrap/dist/css/bootstrap.min.css";
+
+// export default function Maintenance() {
+//   const { user } = useAuth();
+
+//   return (
+//     <Container
+//       fluid
+//       className="d-flex align-items-center justify-content-center"
+//       style={{ minHeight: "70vh" }}
+//     >
+//       <Card
+//         className="text-center shadow-sm"
+//         style={{ maxWidth: 600, width: "100%" }}
+//       >
+//         <Card.Body>
+//           <Card.Title style={{ fontSize: 26, marginBottom: 12 }}>
+//             Maintenance Module
+//           </Card.Title>
+
+//           <Card.Text style={{ fontSize: 16, color: "#555" }}>
+//             🚧 This page is currently under development.
+//           </Card.Text>
+
+//           <Card.Text style={{ fontSize: 15, color: "#777" }}>
+//             Maintenance management features will be available soon.
+//           </Card.Text>
+
+//           <div
+//             style={{
+//               marginTop: 20,
+//               padding: 12,
+//               background: "#f8f9fa",
+//               borderRadius: 6,
+//               fontSize: 14,
+//               color: "#333",
+//             }}
+//           >
+//             Thank you for your patience{user?.displayName ? `, ${user.displayName}` : ""}.
+//           </div>
+//         </Card.Body>
+//       </Card>
+//     </Container>
+//   );
+// }

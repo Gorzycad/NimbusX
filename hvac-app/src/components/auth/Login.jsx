@@ -19,74 +19,6 @@ export default function Login() {
   const handleChange = (key, value) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-//   const handleSubmit = async (e) => {
-//   e.preventDefault();
-//   setLoading(true);
-
-//   try {
-//     // Clear any previous session
-//     localStorage.clear();
-
-//     const auth = getAuth();
-//     const userCred = await signInWithEmailAndPassword(
-//       auth,
-//       form.email.trim(),
-//       form.password
-//     );
-
-//     const firebaseUser = userCred.user;
-
-//     // Email verification
-//     if (!firebaseUser.emailVerified) {
-//       await signOut(auth);
-//       alert("Please verify your email before logging in.");
-//       setLoading(false);
-//       return;
-//     }
-
-//     const uid = firebaseUser.uid;
-
-//     // Force token refresh to get latest custom claims
-//     await firebaseUser.getIdToken(true);
-
-//     // Sync global user profile in Firestore
-//     await setDoc(
-//       doc(db, "users", uid),
-//       {
-//         displayName: firebaseUser.displayName || form.email.split("@")[0],
-//         email: firebaseUser.email,
-//         lastLoginAt: serverTimestamp(),
-//       },
-//       { merge: true }
-//     );
-
-//     const userSnap = await getDoc(doc(db, "users", uid));
-//     if (!userSnap.exists()) throw new Error("User not found");
-
-//     let userData = userSnap.data();
-//     let companyId = userData.companyId || "GLOBAL"; // fallback
-
-//     // Cache user info locally
-//     localStorage.setItem("user", JSON.stringify(userData));
-//     localStorage.setItem("role", (userData.role || "guest").toLowerCase());
-//     localStorage.setItem("companyId", companyId);
-
-//     console.log("✅ Login successful:", userData, companyId);
-
-//     // Navigate to dashboard, then immediately reload page to apply state
-//     navigate("/CompanyDashboard", { replace: true });
-//     setTimeout(() => {
-//       window.location.reload();
-//     }, 50); // small delay ensures route change before reload
-
-//   } catch (err) {
-//     console.error("❌ Login error:", err);
-//     alert("Login failed: " + (err?.message || err));
-//   } finally {
-//     setLoading(false);
-//   }
-// };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -171,9 +103,7 @@ export default function Login() {
       console.log("Company ID from token:", companyIdFromClaims);
 
       // Only perform Firestore reads AFTER login
-      //let companyId = localStorage.getItem("companyId");
-      //let userData = null;
-
+      
       const userRef = doc(db, `users/${uid}`);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) throw new Error("User not found");
@@ -234,10 +164,7 @@ export default function Login() {
 
       console.log("✅ Login successful:", userData, companyId);
 
-      // HARD redirect to dashboard
-      // ...after successful login:
-      //window.location.href = "/CompanyDashboard";
-      
+               
       navigate("/CompanyDashboard", { replace: true });
       setTimeout(() => {
         window.location.reload();

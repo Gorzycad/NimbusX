@@ -17,26 +17,6 @@ import { db } from "./firebase";
 // ---------------------------------------------
 // ADD AWARD
 // ---------------------------------------------
-// export async function addAward(companyId, data) {
-//   const ref = collection(db, "companies", companyId, "awards");
-
-//   const payload = {
-//     ...data,
-//     createdAt: serverTimestamp(),
-//   };
-
-//   const docRef = await addDoc(ref, payload);
-//   return docRef.id;
-// }
-
-// export async function addAward(companyId, data) {
-//   const docRef = await addDoc(
-//     collection(db, "companies", companyId, "awards"),
-//     data
-//   );
-//   return docRef; // ✅ REQUIRED
-// }
-
 export async function addAward(companyId, data) {
   const docRef = await addDoc(
     collection(db, "companies", companyId, "awards"),

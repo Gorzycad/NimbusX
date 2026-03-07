@@ -37,13 +37,14 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: "NimbusX",
+    icon: path.join(__dirname, "assets/icons/vault.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-    },
-    title: "NimbusX", // ✅ Window title
-    icon: path.join(__dirname, "assets/icons/vault.png"), // PNG exported from Lucide
+      devTools: isDev // DevTools only allowed in development
+    }
   });
 
   if (isDev) {
@@ -54,8 +55,42 @@ function createWindow() {
     console.log("Loading:", indexPath);
     mainWindow.loadFile(indexPath);
   }
+
   // Remove default menu
   Menu.setApplicationMenu(null);
+
+  // Disable right-click context menu
+  mainWindow.webContents.on("context-menu", (e) => {
+    e.preventDefault();
+  });
+
+  // Block DevTools shortcuts & unwanted keys
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+
+    const ctrl = input.control || input.meta;
+
+    // Allow only copy, cut, paste
+    if (ctrl && ["c", "x", "v"].includes(input.key.toLowerCase())) {
+      return;
+    }
+
+    // Block DevTools shortcuts
+    if (
+      input.key === "F12" ||
+      (ctrl && input.shift && input.key.toLowerCase() === "i") ||
+      (ctrl && input.shift && input.key.toLowerCase() === "j") ||
+      (ctrl && input.key.toLowerCase() === "u")
+    ) {
+      event.preventDefault();
+    }
+  });
+
+  // Prevent DevTools from opening even if triggered
+  mainWindow.webContents.on("devtools-opened", () => {
+    if (!isDev) {
+      mainWindow.webContents.closeDevTools();
+    }
+  });
 }
 
 autoUpdater.on("update-downloaded", () => {
@@ -86,6 +121,14 @@ app.whenReady().then(() => {
     console.error("Backend failed to start:", err);
   }
 
+});
+
+app.on("web-contents-created", (event, contents) => {
+  contents.on("will-navigate", (e, url) => {
+    if (!url.startsWith("file://")) {
+      e.preventDefault();
+    }
+  });
 });
 
 // Gracefully close backend on exit
