@@ -5,6 +5,7 @@ import path from "path";
 import { app, BrowserWindow, Menu, dialog } from "electron";
 import { fileURLToPath } from "url";
 import { startServer } from "../hvac-backend/server.js";
+import log from "electron-log";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 
@@ -38,7 +39,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: "NimbusX",
-    icon: path.join(__dirname, "assets/icons/vault.png"),
+    icon: path.join(__dirname, "assets/icons/vault.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -104,6 +105,22 @@ autoUpdater.on("update-downloaded", () => {
   });
 });
 
+autoUpdater.on("checking-for-update", () => {
+  console.log("Checking for update...");
+});
+
+autoUpdater.on("update-available", (info) => {
+  console.log("Update available:", info.version);
+});
+
+autoUpdater.on("update-not-available", () => {
+  console.log("No updates available.");
+});
+
+autoUpdater.on("error", (err) => {
+  console.error("Updater error:", err);
+});
+
 // Start backend first, then frontend
 app.whenReady().then(() => {
   try {
@@ -113,9 +130,11 @@ app.whenReady().then(() => {
     // Only check for updates in production
     if (!isDev) {
       // Enable updater logging
-      autoUpdater.logger = console;
+      autoUpdater.logger = log;
       autoUpdater.logger.transports.file.level = "info";
-      autoUpdater.checkForUpdatesAndNotify();
+      setTimeout(() => {
+        autoUpdater.checkForUpdatesAndNotify();
+      }, 10000);
     }
   } catch (err) {
     console.error("Backend failed to start:", err);
