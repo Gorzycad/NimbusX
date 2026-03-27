@@ -1,7 +1,44 @@
 import React, { useState } from "react";
 import { Button, Form, Card } from "react-bootstrap";
+import { useEffect } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+
+import {
+  getMaintenanceEntries,
+  addMaintenanceEntry as addEntryToDB,
+  deleteMaintenanceEntry as deleteEntryFromDB,
+  updateMaintenanceEntry as updateEntryInDB
+} from "../../firebase/maintenanceService";
 
 export default function Maintenance() {
+  const { companyId } = useAuth();
+
+  useEffect(() => {
+
+    if (!companyId) return;
+
+    const loadEntries = async () => {
+
+      const data = await getMaintenanceEntries(companyId);
+
+      const formatted = {};
+
+      data.forEach((entry) => {
+        if (!formatted[entry.date]) {
+          formatted[entry.date] = [];
+        }
+
+        formatted[entry.date].push(entry);
+      });
+
+      setEntries(formatted);
+    };
+
+    loadEntries();
+
+  }, [companyId]);
+
+
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(
     new Date(today.getFullYear(), today.getMonth(), 1)
@@ -31,31 +68,65 @@ export default function Maintenance() {
   const dateKey = (day) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-  const addEntry = (day) => {
+  const addEntry = async (day) => {
     const key = dateKey(day);
-    setEntries((prev) => ({
-      ...prev,
-      [key]: [...(prev[key] || []), { title: "", task: "", staff: "" }],
-    }));
+
+    const newEntry = {
+      date: key,
+      title: "",
+      task: "",
+      staff: ""
+    };
+
+    try {
+      const docRef = await addEntryToDB(companyId, newEntry);
+
+      setEntries((prev) => ({
+        ...prev,
+        [key]: [...(prev[key] || []), { id: docRef.id, ...newEntry }]
+      }));
+    } catch (err) {
+      console.error("Error adding maintenance entry:", err);
+    }
   };
 
-  const removeEntry = (day, index) => {
-    const key = dateKey(day);
+  const removeEntry = async (day, index) => {
+  const key = dateKey(day);
+  const entry = entries[key]?.[index];
+
+  if (!entry) return;
+  if (!window.confirm("Delete this entry?")) return;
+
+  try {
+    await deleteEntryFromDB(companyId, entry.id);
+
     setEntries((prev) => ({
       ...prev,
-      [key]: prev[key].filter((_, i) => i !== index),
+      [key]: prev[key].filter((_, i) => i !== index)
     }));
-  };
+  } catch (err) {
+    console.error("Delete failed:", err);
+  }
+};
 
-  const updateEntry = (day, index, field, value) => {
+  const updateEntry = async (day, index, field, value) => {
     const key = dateKey(day);
-    const updated = [...entries[key]];
+
+    const updated = [...(entries[key] || [])];
     updated[index][field] = value;
 
     setEntries((prev) => ({
       ...prev,
       [key]: updated,
     }));
+
+    const entry = updated[index];
+
+    try {
+      await updateEntryInDB(companyId, entry.id, entry);
+    } catch (err) {
+      console.error("Update failed:", err);
+    }
   };
 
   const changeMonth = (dir) => {
@@ -89,7 +160,7 @@ export default function Maintenance() {
                   <strong>{day}</strong>
 
                   {(entries[dateKey(day)] || []).map((entry, idx) => (
-                    <Card key={idx} className="mt-2">
+                    <Card key={entry.id} className="mt-2">
                       <Card.Body className="p-2">
                         <Form.Control
                           size="sm"

@@ -60,6 +60,96 @@ export default function ReportsPage() {
         <SummaryCard title="Handed Over" value={handovers.length} />
       </div>
 
+      {/* LEADS ACQUIRED TABLE */}
+      <div className="card mb-4">
+        <div className="card-header">Leads Acquired</div>
+        <div className="card-body">
+          <table className="table table-bordered">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Project</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {leads.map((l) => (
+                <tr key={l.id}>
+                  <td>{l.clientName}</td>
+                  <td>{l.projectName}</td>
+
+                  {/* ✅ Detect from saved date */}
+                  <td>
+                    {l.createdAt?.toDate
+                      ? l.createdAt.toDate().toLocaleDateString()
+                      : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {/* TENDER SUBMITTED TABLE */}
+      <div className="card mb-4">
+        <div className="card-header">Tenders Submitted</div>
+        <div className="card-body">
+          <table className="table table-bordered">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Date Submitted</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {tenders.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.projectName}</td>
+
+                  {/* ✅ Detect from Firestore */}
+                  <td>
+                    {t.createdAt?.toDate
+                      ? t.createdAt.toDate().toLocaleDateString()
+                      : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* PROJECT AWARDED TABLE */}
+      <div className="card mb-4">
+        <div className="card-header">Projects Awarded</div>
+        <div className="card-body">
+          <table className="table table-bordered">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Date Awarded</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {awards.map((a) => (
+                <tr key={a.id}>
+                  <td>{a.projectName}</td>
+                  {/* ✅ Detect from Firestore */}
+                  <td>
+                    {a.createdAt?.toDate
+                      ? a.createdAt.toDate().toLocaleDateString()
+                      : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* EXECUTION PROGRESS */}
       <div className="card mb-4">
         <div className="card-header">Project Execution Progress</div>
@@ -75,12 +165,25 @@ export default function ReportsPage() {
             </thead>
             <tbody>
               {executions.map(e => {
-                const progress = calcProgress(e.startDate, e.endDate);
+                const progress = e.progress || calcProgress(e.startDate, e.endDate);
+
                 return (
                   <tr key={e.id}>
                     <td>{e.projectName}</td>
-                    <td>{e.startDate}</td>
-                    <td>{e.endDate}</td>
+
+                    <td>
+                      {e.startDate
+                        ? new Date(e.startDate).toLocaleDateString()
+                        : ""}
+                    </td>
+
+                    {/* ✅ Uses endDate from ExecutionOverview */}
+                    <td>
+                      {e.endDate
+                        ? new Date(e.endDate).toLocaleDateString()
+                        : ""}
+                    </td>
+
                     <td>
                       <div className="progress">
                         <div
@@ -103,13 +206,32 @@ export default function ReportsPage() {
       <div className="card">
         <div className="card-header">Projects Handed Over</div>
         <div className="card-body">
-          <ul>
-            {handovers.map(h => (
-              <li key={h.id}>{h.projectName}</li>
-            ))}
-          </ul>
+          <table className="table table-bordered">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {handovers.map(h => (
+                <tr key={h.id}>
+                  <td>{h.projectName}</td>
+
+                  {/* ✅ Detect from Firestore */}
+                  <td>
+                    {h.createdAt?.toDate
+                      ? h.createdAt.toDate().toLocaleDateString()
+                      : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
+
     </div>
   );
 }

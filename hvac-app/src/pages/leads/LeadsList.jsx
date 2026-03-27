@@ -324,7 +324,32 @@ export default function LeadsList() {
                   <ul style={{ paddingLeft: 16 }}>
                     {lead.fileUpload.map(f => (
                       <li key={f.fileId}>
-                        <a href={f.url} target="_blank" rel="noreferrer" download>⬇ {f.name}</a>
+                        <button
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#1976d2",
+                            cursor: "pointer",
+                            textDecoration: "underline"
+                          }}
+                          onClick={async () => {
+                            const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+                            const token = tokens?.access_token;
+
+                            if (!token) {
+                              alert("You must login first");
+                              return;
+                            }
+
+                            const result = await window.electron.downloadFile(f.fileId, token, f.name)
+
+                            if (!result?.success) {
+                              alert("Download failed");
+                            }
+                          }}
+                        >
+                          ⬇ {f.name}
+                        </button>
                       </li>
                     ))}
                   </ul>

@@ -8,7 +8,7 @@ const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  //const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [role, setRole] = useState("guest");
@@ -17,10 +17,26 @@ export function AuthProvider({ children }) {
   //const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
 
+  // useEffect(() => {
+  //   const storedLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+  //   setIsLoggedIn(storedLoggedIn);
+  // }, []);
+
   useEffect(() => {
-    const storedLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    setIsLoggedIn(storedLoggedIn);
+    // Listen for OAuth success from Electron
+    if (window.electron?.onOAuthSuccess) {
+      window.electron.onOAuthSuccess(() => {
+        console.log("✅ OAuth success received from Electron");
+
+        //setIsLoggedIn(true);
+        //localStorage.setItem("isLoggedIn", "true");
+
+        // optional: redirect user to dashboard
+        window.location.href = "/CompanyDashboard/leads";
+      });
+    }
   }, []);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -64,7 +80,9 @@ export function AuthProvider({ children }) {
           setDisplayName("");
 
           // ⛑️ Fallback to claims if Firestore is missing
-          setRole(tokenResult.claims.role || "guest");
+          //setRole(tokenResult.claims.role || "guest");
+          const claimRole = normalizeRole(tokenResult.claims.role);
+          setRole(claimRole || "guest");
           setCompanyId(tokenResult.claims.companyId || null);
           setDisplayName(firebaseUser.email || "");
 
@@ -76,7 +94,13 @@ export function AuthProvider({ children }) {
         const data = userSnap.data();
 
         setUserData(data);
-        setRole(data.role?.toLowerCase() || "guest");
+        //setRole(data.role?.toLowerCase() || "guest");
+        const normalizeRole = (role) =>
+          role?.toLowerCase().replace(/\s+/g, "_");
+
+        const normalizedRole = normalizeRole(data.role);
+
+        setRole(normalizedRole || "guest");
         setCompanyId(data.companyId);
         setDisplayName(`${data.firstName || ""} ${data.lastName || ""}`.trim());
 
@@ -122,8 +146,8 @@ export function AuthProvider({ children }) {
     const params = new URLSearchParams(window.location.search);
 
     if (params.get("oauth") === "success") {
-      setIsLoggedIn(true);
-      localStorage.setItem("isLoggedIn", "true");
+      //setIsLoggedIn(true);
+      //localStorage.setItem("isLoggedIn", "true");
 
       // Clean URL
       window.history.replaceState(
@@ -131,9 +155,10 @@ export function AuthProvider({ children }) {
         document.title,
         window.location.pathname
       );
-    } else if (localStorage.getItem("isLoggedIn") === "true") {
-      setIsLoggedIn(true);
     }
+    // else if (localStorage.getItem("isLoggedIn") === "true") {
+    //   //setIsLoggedIn(true);
+    // }
   }, []);
 
 
@@ -161,8 +186,8 @@ export function AuthProvider({ children }) {
     //loading,
     authReady,
     logout,
-    isLoggedIn,
-    setIsLoggedIn,
+    //isLoggedIn,
+    //setIsLoggedIn,
   };
 
   // Only show loading state when actually loading

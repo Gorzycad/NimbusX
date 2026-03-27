@@ -89,6 +89,15 @@ export default function ProcurementPage() {
     loadStaff();
   }, [companyId]);
 
+  useEffect(() => {
+    // Reset all tables when switching tabs
+    setRequisitionRows([emptyRow()]);
+    setVendors([]);
+    setStaffItems([]);
+    setContractors([]);
+    setEditingId(null);
+  }, [activeTab]);
+
   const staffAssignedIds = formData.staffAssigned;
 
   const staffNameMap = useMemo(() => {
@@ -406,6 +415,7 @@ export default function ProcurementPage() {
                 <tr>
                   <th>Date</th>
                   <th>Created By</th>
+                  <th>Items</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -418,6 +428,16 @@ export default function ProcurementPage() {
                         : ""}
                     </td>
                     <td>{rec.createdBy?.name}</td>
+
+                    {/* ✅ DISPLAY DATA */}
+                    <td>
+                      {(rec.data || []).map((r, i) => (
+                        <div key={i}>
+                          {r.item} ({r.quantity})
+                        </div>
+                      ))}
+                    </td>
+
                     <td>
                       <button
                         className="btn btn-sm btn-primary me-2"
@@ -456,6 +476,7 @@ export default function ProcurementPage() {
                   <th>Contact</th>
                   <th>Email</th>
                   <th>Payment Details</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -474,6 +495,16 @@ export default function ProcurementPage() {
                         />
                       </td>
                     ))}
+
+                    {/* ✅ REMOVE BUTTON */}
+                    <td>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => removeRow(setVendors, i)}
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -495,6 +526,7 @@ export default function ProcurementPage() {
                 <tr>
                   <th>Date</th>
                   <th>Created By</th>
+                  <th>Vendors</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -507,6 +539,15 @@ export default function ProcurementPage() {
                         : ""}
                     </td>
                     <td>{rec.createdBy?.name}</td>
+
+                    <td>
+                      {(rec.data || []).map((v, i) => (
+                        <div key={i}>
+                          {v.name} - {v.contact}
+                        </div>
+                      ))}
+                    </td>
+
                     <td>
                       <button
                         className="btn btn-sm btn-primary me-2"
@@ -514,7 +555,6 @@ export default function ProcurementPage() {
                       >
                         Edit
                       </button>
-
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleDelete(rec.id)}
@@ -544,14 +584,58 @@ export default function ProcurementPage() {
                   <th>Staff</th>
                   <th>Item</th>
                   <th>Date Assigned</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {staffItems.map((r, i) => (
                   <tr key={i}>
-                    <td><input className="form-control" /></td>
-                    <td><input className="form-control" /></td>
-                    <td><input type="date" className="form-control" /></td>
+                    <td>
+                      <input
+                        className="form-control"
+                        value={r.staff || ""}
+                        onChange={e => {
+                          const copy = [...staffItems];
+                          copy[i].staff = e.target.value;
+                          setStaffItems(copy);
+                        }}
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        className="form-control"
+                        value={r.item || ""}
+                        onChange={e => {
+                          const copy = [...staffItems];
+                          copy[i].item = e.target.value;
+                          setStaffItems(copy);
+                        }}
+                      />
+                    </td>
+
+                    <td>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={r.date || ""}
+                        onChange={e => {
+                          const copy = [...staffItems];
+                          copy[i].date = e.target.value;
+                          setStaffItems(copy);
+                        }}
+                      />
+                    </td>
+
+                    {/* ✅ REMOVE */}
+                    <td>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => removeRow(setStaffItems, i)}
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -573,6 +657,7 @@ export default function ProcurementPage() {
                 <tr>
                   <th>Date</th>
                   <th>Created By</th>
+                  <th>Assignments</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -585,6 +670,15 @@ export default function ProcurementPage() {
                         : ""}
                     </td>
                     <td>{rec.createdBy?.name}</td>
+
+                    <td>
+                      {(rec.data || []).map((r, i) => (
+                        <div key={i}>
+                          {r.staff} → {r.item}
+                        </div>
+                      ))}
+                    </td>
+
                     <td>
                       <button
                         className="btn btn-sm btn-primary me-2"
@@ -592,7 +686,6 @@ export default function ProcurementPage() {
                       >
                         Edit
                       </button>
-
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleDelete(rec.id)}
@@ -623,15 +716,36 @@ export default function ProcurementPage() {
                   <th>Service</th>
                   <th>Contact</th>
                   <th>Last Visit</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {contractors.map((c, i) => (
                   <tr key={i}>
-                    <td><input className="form-control" /></td>
-                    <td><input className="form-control" /></td>
-                    <td><input className="form-control" /></td>
-                    <td><input type="date" className="form-control" /></td>
+                    {["company", "service", "contact", "date"].map(field => (
+                      <td key={field}>
+                        <input
+                          type={field === "date" ? "date" : "text"}
+                          className="form-control"
+                          value={c[field] || ""}
+                          onChange={e => {
+                            const copy = [...contractors];
+                            copy[i][field] = e.target.value;
+                            setContractors(copy);
+                          }}
+                        />
+                      </td>
+                    ))}
+
+                    {/* ✅ REMOVE */}
+                    <td>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => removeRow(setContractors, i)}
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -653,6 +767,7 @@ export default function ProcurementPage() {
                 <tr>
                   <th>Date</th>
                   <th>Created By</th>
+                  <th>Contractors</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -665,6 +780,15 @@ export default function ProcurementPage() {
                         : ""}
                     </td>
                     <td>{rec.createdBy?.name}</td>
+
+                    <td>
+                      {(rec.data || []).map((c, i) => (
+                        <div key={i}>
+                          {c.company} - {c.service}
+                        </div>
+                      ))}
+                    </td>
+
                     <td>
                       <button
                         className="btn btn-sm btn-primary me-2"
@@ -672,7 +796,6 @@ export default function ProcurementPage() {
                       >
                         Edit
                       </button>
-
                       <button
                         className="btn btn-sm btn-danger"
                         onClick={() => handleDelete(rec.id)}

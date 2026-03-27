@@ -190,7 +190,7 @@ export default function Staff() {
     docPdf.save(`Attendance_${monthLabel}.pdf`);
   };
 
-  const monthlyFee = 2500;
+  const monthlyFee = 3500;
   const numberOfUsers = staffList.length;
   const totalDue = monthlyFee * numberOfUsers;
 

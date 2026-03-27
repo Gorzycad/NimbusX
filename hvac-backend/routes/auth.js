@@ -1,3 +1,4 @@
+//hvac-backend/auth.js
 import express from "express";
 import createOAuthClient from "../google/oauthClient.js";
 
@@ -6,9 +7,14 @@ export default function authRoutes(CONFIG) {
 
   const { oauth2Client, SCOPES } = createOAuthClient(CONFIG);
 
+  // START GOOGLE OAUTH
   router.get("/google", (req, res) => {
     const redirect = req.query.redirect;
-    if (redirect) req.session.redirectTo = redirect;
+
+    // store redirect so callback can use it
+    if (redirect) {
+      req.session.redirectTo = redirect;
+    }
 
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
@@ -19,25 +25,59 @@ export default function authRoutes(CONFIG) {
     res.redirect(url);
   });
 
-  router.get("/oauth2callback", async (req, res) => {
-    try {
-      const { code } = req.query;
-      const { tokens } = await oauth2Client.getToken(code);
+router.get("/oauth2callback", async (req, res) => {
+  try {
+    const { code } = req.query;
 
-      req.session.googleTokens = tokens;
+    const redirectTo =
+      req.session.redirectTo ||
+      "http://localhost:3000/CompanyDashboard/leads";
 
-      const redirectTo =
-        req.session.redirectTo ||
-        "http://localhost:3000/CompanyDashboard/leads";
+    delete req.session.redirectTo;
 
-      delete req.session.redirectTo;
+    const isElectron = redirectTo.includes("localhost:3000");
 
-      res.redirect(`${redirectTo}?oauth=success`);
-    } catch (err) {
-      console.error(err);
-      res.status(500).send("OAuth failed");
+    if (isElectron) {
+      return res.redirect(`hvacapp://oauth-success?code=${code}`);
     }
-  });
+
+    res.redirect(`${redirectTo}?oauth=success`);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("OAuth failed");
+  }
+});
+  // // GOOGLE CALLBACK
+  // router.get("/oauth2callback", async (req, res) => {
+  //   try {
+  //     const { code } = req.query;
+
+  //     const { tokens } = await oauth2Client.getToken(code);
+  //     req.session.googleTokens = tokens;
+
+  //     const redirectTo =
+  //       req.session.redirectTo ||
+  //       "http://localhost:3000/CompanyDashboard/leads";
+
+  //     delete req.session.redirectTo;
+
+  //     // Detect Electron redirect
+  //     const isElectron =
+  //       redirectTo && redirectTo.includes("localhost:3000");
+
+  //     if (isElectron) {
+  //       // Electron custom protocol redirect
+  //       return res.redirect(`hvacapp://oauth-success?code=${req.query.code}`);
+  //     }
+
+  //     // Normal browser redirect
+  //     res.redirect(`${redirectTo}?oauth=success`);
+  //   } catch (err) {
+  //     console.error(err);
+  //     res.status(500).send("OAuth failed");
+  //   }
+  // });
 
   router.get("/status", (req, res) => {
     res.json({ authenticated: !!req.session.googleTokens });
@@ -45,4 +85,52 @@ export default function authRoutes(CONFIG) {
 
   return router;
 }
+
+// import express from "express";
+// import createOAuthClient from "../google/oauthClient.js";
+
+// export default function authRoutes(CONFIG) {
+//   const router = express.Router();
+
+//   const { oauth2Client, SCOPES } = createOAuthClient(CONFIG);
+
+//   router.get("/google", (req, res) => {
+//     const redirect = req.query.redirect;
+//     if (redirect) req.session.redirectTo = redirect;
+
+//     const url = oauth2Client.generateAuthUrl({
+//       access_type: "offline",
+//       prompt: "consent",
+//       scope: SCOPES,
+//     });
+
+//     res.redirect(url);
+//   });
+
+//   router.get("/oauth2callback", async (req, res) => {
+//     try {
+//       const { code } = req.query;
+//       const { tokens } = await oauth2Client.getToken(code);
+
+//       req.session.googleTokens = tokens;
+
+//       const redirectTo =
+//         req.session.redirectTo ||
+//         "http://localhost:3000/CompanyDashboard/leads";
+
+//       delete req.session.redirectTo;
+
+//       res.redirect(`${redirectTo}?oauth=success`);
+//     } catch (err) {
+//       console.error(err);
+//       res.status(500).send("OAuth failed");
+//     }
+//   });
+
+//   router.get("/status", (req, res) => {
+//     res.json({ authenticated: !!req.session.googleTokens });
+//   });
+
+//   return router;
+// }
 

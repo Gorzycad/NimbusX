@@ -19,7 +19,7 @@ function UploadPage() {
   // Upload file
   const uploadFile = async () => {
     if (!file) return alert("Please select a file first");
-    if (!isLoggedIn) return alert("You must login first");
+    if (!isLoggedIn) return alert("You must login first from src pages");
 
     const formData = new FormData();
     formData.append("file", file);

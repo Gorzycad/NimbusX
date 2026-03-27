@@ -22,3 +22,4 @@ config.json
 service-account*.json
 serviceAccountKey*.json
 hvac-app/functions/*.json
+/config/config.json

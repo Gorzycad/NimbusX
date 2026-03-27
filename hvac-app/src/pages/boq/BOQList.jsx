@@ -58,25 +58,48 @@ export default function BoqPage() {
     load();
   }, [companyId]);
 
-  useEffect(() => {
-    if (!formData.projectName) return;
+ useEffect(() => {
+  if (!formData.projectName) return;
 
-    const design = designs.find(
-      d => d.projectName === formData.projectName
-    );
+  const design = designs.find(
+    d => d.projectName === formData.projectName
+  );
 
-    if (!design || !design.boq) {
-      console.warn("No BOQ found for project:", formData.projectName);
-      return;
-    }
+  if (!design || !design.mechBOQ) {
+    console.warn("No Mechanical BOQ found for project:", formData.projectName);
+    return;
+  }
 
-    setFormData(prev => ({
-      ...prev,
-      mechanical: structuredClone(design.boq.mechanical || []),
-      electrical: structuredClone(design.boq.electrical || []),
-      plumbing: structuredClone(design.boq.plumbing || []),
-    }));
-  }, [formData.projectName, designs]);
+  // ✅ Convert mechBOQ → flat table format
+  const mechanicalRows = [];
+
+  design.mechBOQ.forEach(section => {
+    // Category row (no unit = your UI treats as header)
+    mechanicalRows.push({
+      item: section.category,
+      qty: "",
+      unit: "",
+      rate: 0,
+    });
+
+    section.items.forEach(item => {
+      mechanicalRows.push({
+        item: item.name,
+        qty: item.qty,
+        unit: item.unit,
+        rate: 0, // user will fill rate later
+      });
+    });
+  });
+
+  setFormData(prev => ({
+    ...prev,
+    mechanical: mechanicalRows,
+    electrical: [], // future-ready
+    plumbing: [],   // future-ready
+  }));
+
+}, [formData.projectName, designs]);
 
 
   /* ---------------- LOAD BOQ FROM SHEET ---------------- */

@@ -11,7 +11,12 @@ export const ROLE_ACCESS = {
       "execution", "handover", "award", "leads", "tender",
       "procurement", "finance", "staff", "logistics", "maintenance", "inventory", "marketplace", "support_tickets"
     ],
-    company_admin: ["companydashboard", "dashboard", "reports", "po", "mto"],
+    company_admin: [
+      "companydashboard", "dashboard", "reports", "po", "mto", "boq", "design",
+      "execution", "handover", "award", "leads", "tender",
+      "procurement", "finance", "staff", "logistics", "maintenance", "inventory", "marketplace", "support_tickets"
+    ],
+    //company_admin: ["companydashboard", "dashboard", "reports", "po", "mto"],
     project_manager: ["companydashboard", "dashboard", "boq", "design", "execution", "handover", "mto", "reports"],
     engineering_manager: ["companydashboard", "dashboard", "boq", "design", "execution", "handover", "mto", "reports"],
     project_engineer: ["companydashboard", "dashboard", "boq", "design", "execution", "handover", "mto", "reports"],

@@ -11,6 +11,10 @@ export default function Logout() {
     const doLogout = async () => {
       try {
         await signOut(auth);
+
+        // ✅ CLEAR LOCAL DATA
+    localStorage.clear();
+    
         navigate("/login"); // redirect after sign out
       } catch (err) {
         console.error("Logout error:", err);

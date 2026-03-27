@@ -157,6 +157,7 @@ export default function ExecutionPage() {
       projectName: formData.projectName,
       staffAssigned: formData.staffAssigned,
       startDate: formData.startDate,
+      endDate: overallFinish, 
       tasks: formData.tasks,
       progress,
     };

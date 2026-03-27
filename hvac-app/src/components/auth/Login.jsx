@@ -9,12 +9,19 @@ import { serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Login() {
-  const { setIsLoggedIn } = useAuth(); // ✅ add this
+  //const { setIsLoggedIn } = useAuth(); // ✅ add this
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const { user, authReady } = useAuth();
 
+
+  React.useEffect(() => {
+    if (authReady && user) {
+      navigate("/CompanyDashboard", { replace: true });
+    }
+  }, [user, authReady, navigate]);
 
   const handleChange = (key, value) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -25,7 +32,11 @@ export default function Login() {
 
     try {
       // Clear previous session
-      localStorage.clear();
+      //localStorage.clear();
+      localStorage.removeItem("companyId");
+      localStorage.removeItem("user");
+      localStorage.removeItem("role");
+      //localStorage.removeItem("isLoggedIn");
 
       const auth = getAuth();
       const userCred = await signInWithEmailAndPassword(
@@ -81,16 +92,19 @@ export default function Login() {
             })
           );
           localStorage.setItem("role", role);
-          localStorage.setItem("isLoggedIn", "true");
-          setIsLoggedIn(true); // if you import useAuth
+          //localStorage.setItem("isLoggedIn", "true");
+          //setIsLoggedIn(true); // if you import useAuth
 
           //window.location.href = "/CompanyDashboard";
           navigate("/CompanyDashboard", { replace: true });
-          setTimeout(() => {
-           window.location.reload();
-         }, 10); // tiny delay ensures route update triggers first
-          
-         return;
+          // setTimeout(() => {
+          //   navigate("/CompanyDashboard", { replace: true });
+          // }, 50);
+          // setTimeout(() => {
+          //   window.location.reload();
+          // }, 10); // tiny delay ensures route update triggers first
+
+          return;
         }
       }
 
@@ -103,7 +117,7 @@ export default function Login() {
       console.log("Company ID from token:", companyIdFromClaims);
 
       // Only perform Firestore reads AFTER login
-      
+
       const userRef = doc(db, `users/${uid}`);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) throw new Error("User not found");
@@ -142,41 +156,59 @@ export default function Login() {
       }
 
       // If userData still not set, fetch directly
-      if (!userData) {
-        const userRef = doc(db, `companies/${companyId}/users/${uid}`);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          userData = userSnap.data();
-          localStorage.setItem("user", JSON.stringify(userData));
-          localStorage.setItem(
-            "role",
-            (userData.role || "guest").toLowerCase()
-          );
-          localStorage.setItem("isLoggedIn", "true");
-          setIsLoggedIn(true); // if you import useAuth
-        } else {
-          alert("User profile not found. Please contact your admin.");
-          await signOut(auth);
-          setLoading(false);
-          return;
-        }
-      }
+      // if (!userData) {
+      //   const userRef = doc(db, `companies/${companyId}/users/${uid}`);
+      //   const userSnap = await getDoc(userRef);
+      //   if (userSnap.exists()) {
+      //     userData = userSnap.data();
+      //     localStorage.setItem("user", JSON.stringify(userData));
+      //     localStorage.setItem(
+      //       "role",
+      //       (userData.role || "guest").toLowerCase()
+      //     );
+      //     localStorage.setItem("isLoggedIn", "true");
+      //     setIsLoggedIn(true); // if you import useAuth
+      //   } else {
+      //     alert("User profile not found. Please contact your admin.");
+      //     await signOut(auth);
+      //     setLoading(false);
+      //     return;
+      //   }
+      // }
 
       console.log("✅ Login successful:", userData, companyId);
 
-               
+      // ✅ IMPORTANT FIX
+      //localStorage.setItem("isLoggedIn", "true");
+      //setIsLoggedIn(true);
+
       navigate("/CompanyDashboard", { replace: true });
-      setTimeout(() => {
-        window.location.reload();
-      }, 10); // tiny delay ensures route update triggers first
-     
+
+      // console.log("✅ Login successful:", userData, companyId);
+
+      // setTimeout(() => {
+      //   navigate("/CompanyDashboard", { replace: true });
+      // }, 50);
+
+      // navigate("/CompanyDashboard", { replace: true });
+      // setTimeout(() => {
+      //   window.location.reload();
+      // }, 500); // tiny delay ensures route update triggers first
+
     } catch (err) {
       console.error("❌ Login error:", err);
-      alert("Login failed: " + (err?.message || err));
+      if (err.code === "auth/wrong-password") {
+        alert("Incorrect password");
+      }
+      //alert("Login failed: " + (err?.message || err));
     } finally {
       setLoading(false);
     }
   };
+
+  if (loading) {
+    return <p style={{ textAlign: "center", marginTop: 50 }}>Signing in...</p>;
+  }
 
   return (
     <div style={{ maxWidth: 400, margin: "60px auto", padding: 20 }}>

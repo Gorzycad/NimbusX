@@ -53,7 +53,14 @@ export const saveInventoryTable = async (
   });
 
   // Add new
-  rows.forEach(row => {
+ rows
+  .filter(row =>
+  row.productId ||
+  row.product ||
+  row.qty ||
+  row.price
+) // important
+  .forEach(row => {
     const newDoc = doc(colRef);
     batch.set(newDoc, {
       ...row,
@@ -86,20 +93,11 @@ export const getInventoryTable = async (companyId, tab) => {
    UPDATE SINGLE ROW (optional future use)
    ====================================================== */
 
-export const updateInventoryRow = async (
-  companyId,
-  tab,
-  id,
-  data
-) => {
-  const ref = doc(
-    db,
-    "companies",
-    companyId,
-    "inventory",
-    tab,
-    id
-  );
+const getInventoryDoc = (companyId, tab, id) =>
+  doc(db, "companies", companyId, "modules", "inventory", tab, id);
+
+export const updateInventoryRow = async (companyId, tab, id, data) => {
+  const ref = getInventoryDoc(companyId, tab, id);
 
   await updateDoc(ref, {
     ...data,
@@ -107,25 +105,8 @@ export const updateInventoryRow = async (
   });
 };
 
-
-/* ======================================================
-   DELETE ROW
-   ====================================================== */
-
-export const deleteInventoryRow = async (
-  companyId,
-  tab,
-  id
-) => {
-  const ref = doc(
-    db,
-    "companies",
-    companyId,
-    "inventory",
-    tab,
-    id
-  );
-
+export const deleteInventoryRow = async (companyId, tab, id) => {
+  const ref = getInventoryDoc(companyId, tab, id);
   await deleteDoc(ref);
 };
 

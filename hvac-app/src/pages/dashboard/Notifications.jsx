@@ -92,27 +92,29 @@ function Notifications() {
       );
     }
 
-    // navigate
-    switch (notif.type) {
-      case "JOBS_ASSIGNED":
-        navigate("/leads");
-        break;
+    //FUTURE UPDATE
+    // // navigate
+    // switch (notif.type) {
+    //   case "JOBS_ASSIGNED":
+    //     navigate("/leads");
+    //     break;
 
-      case "DIRECT_MESSAGE":
-        navigate(`/chat/direct?thread=${notif.threadId}`);
-        break;
+    //   case "DIRECT_MESSAGE":
+    //     navigate(`/chat/direct?thread=${notif.threadId}`);
+    //     break;
 
-      case "ADMIN_ANNOUNCEMENT":
-        navigate("/chat/admin");
-        break;
+    //   case "ADMIN_ANNOUNCEMENT":
+    //     navigate("/chat/admin");
+    //     break;
 
-      case "PROJECT_CHAT":
-        navigate(`/chat/project?projectId=${notif.projectId}`);
-        break;
+    //   case "PROJECT_CHAT":
+    //     navigate(`/chat/project?projectId=${notif.projectId}`);
+    //     break;
 
-      default:
-        break;
-    }
+    //   default:
+    //     break;
+    // }
+
   };
 
   async function markAllAsRead() {

@@ -34,6 +34,7 @@ export default function Register() {
   const [submitting, setSubmitting] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -174,7 +175,7 @@ export default function Register() {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email.trim(),
-        role: form.role,
+        role: form.role.toLowerCase().replace(/\s+/g, "_"),
         companyId: finalCompanyId,
         createdAt: serverTimestamp(),
       };
@@ -205,6 +206,7 @@ export default function Register() {
     }
   };
 
+  if (loading) return;
 
   return (
     <div style={{ maxWidth: 720, margin: "20px auto", padding: 20 }}>

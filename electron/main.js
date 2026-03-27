@@ -2,11 +2,13 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { app, BrowserWindow, Menu, dialog } from "electron";
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell } from "electron";
 import { fileURLToPath } from "url";
 import { startServer } from "../hvac-backend/server.js";
 import log from "electron-log";
 import pkg from "electron-updater";
+import axios from "axios";
+import { google } from "googleapis";
 const { autoUpdater } = pkg;
 
 const secretsPath = path.join(
@@ -18,6 +20,147 @@ const secretsPath = path.join(
 if (!fs.existsSync(secretsPath)) {
   throw new Error(`Missing config file at ${secretsPath}`);
 }
+
+// --- Protocol registration (keep this) ---
+if (process.platform === "win32") {
+  if (process.defaultApp) {
+    app.setAsDefaultProtocolClient("hvacapp", process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
+  } else {
+    app.setAsDefaultProtocolClient("hvacapp");
+  }
+} else {
+  app.setAsDefaultProtocolClient("hvacapp");
+}
+
+// --- Global variable to store protocol URL on cold start ---
+let protocolUrl = null;
+
+// --- Catch protocol URLs on Windows cold start ---
+if (process.platform === "win32") {
+  //const arg = process.argv.find((a) => a.startsWith("hvacapp://"));
+  const arg = process.argv.find((a) => a.includes("hvacapp://"));
+  if (arg) protocolUrl = arg;
+}
+
+async function handleOAuthCode(code) {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      CONFIG.GOOGLE_CLIENT_ID,
+      CONFIG.GOOGLE_CLIENT_SECRET,
+      CONFIG.GOOGLE_REDIRECT_URI
+    );
+
+    // Exchange code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+
+    // Send tokens to renderer
+    if (mainWindow) {
+      mainWindow.webContents.send("oauth-success", tokens);
+    }
+  } catch (err) {
+    console.error("OAuth token exchange failed:", err);
+  }
+}
+
+// --- Mac open-url handler ---
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+
+  const urlObj = new URL(url);
+  const code = urlObj.searchParams.get("code");
+
+  if (code) {
+    handleOAuthCode(code);
+  }
+});
+
+// --- Single instance lock (Windows running multiple times) ---
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (event, argv) => {
+
+    const url = argv.find((a) => a.startsWith("hvacapp://"));
+    console.log("SECOND INSTANCE ARGV:", argv);
+
+    if (mainWindow) {
+
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    console.log("FOUND PROTOCOL URL:", url);
+
+    if (url) {
+      const urlObj = new URL(url);
+      const code = urlObj.searchParams.get("code");
+
+      console.log("OAUTH CODE:", code);
+      if (code) {
+        handleOAuthCode(code);
+      }
+    }
+
+  });
+
+}
+
+// --- Create window & start backend ---
+app.whenReady().then(() => {
+  try {
+    backendServer = startServer(CONFIG);
+    createWindow();
+
+    // --- Send protocol URL to renderer if exists ---
+    if (protocolUrl) {
+      const urlObj = new URL(protocolUrl);
+      const code = urlObj.searchParams.get("code");
+
+      if (code) {
+        handleOAuthCode(code);
+      }
+    }
+
+    // Only check for updates in production
+    if (!isDev) {
+      autoUpdater.logger = log;
+      autoUpdater.logger.transports.file.level = "info";
+      setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+      setInterval(() => autoUpdater.checkForUpdates(), 600000);
+    }
+    const userHome = os.homedir();
+
+    const secretsDir = path.join(userHome, "nimbusxsecrets");
+    const configPath = path.join(secretsDir, "config.json");
+
+    // 1. Create folder
+    if (!fs.existsSync(secretsDir)) {
+      fs.mkdirSync(secretsDir, { recursive: true });
+    }
+
+    // 2. Create config.json if not exists
+    const sourcePath = path.join(process.resourcesPath, "config.json");
+
+    if (!fs.existsSync(configPath)) {
+      fs.copyFileSync(sourcePath, configPath);
+    }
+
+  } catch (err) {
+    console.error("Backend failed to start:", err);
+  }
+});
 
 const CONFIG = JSON.parse(fs.readFileSync(secretsPath, "utf8"));
 
@@ -94,6 +237,45 @@ function createWindow() {
   });
 }
 
+ipcMain.on("open-google-login", () => {
+  shell.openExternal(
+    "http://localhost:4000/auth/google?redirect=http://localhost:3000/CompanyDashboard/leads"
+  );
+});
+
+ipcMain.on("open-external", (event, url) => {
+  shell.openExternal(url);
+});
+
+ipcMain.handle("download-file", async (event, { fileId, token, fileName }) => {
+  try {
+    const response = await axios.get(
+      `http://localhost:4000/download/${fileId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        responseType: "arraybuffer",
+      }
+    );
+
+    const savePath = await dialog.showSaveDialog({
+      title: "Save File",
+      defaultPath: fileName, // ✅ keeps original extension
+    });
+
+    if (savePath.canceled) return;
+
+    fs.writeFileSync(savePath.filePath, response.data);
+
+    return { success: true };
+
+  } catch (error) {
+    console.error("Download failed:", error);
+    return { success: false };
+  }
+});
+
 autoUpdater.on("update-downloaded", () => {
   dialog.showMessageBox({
     type: "info",
@@ -110,6 +292,7 @@ autoUpdater.on("checking-for-update", () => {
 });
 
 autoUpdater.on("update-available", (info) => {
+  autoUpdater.downloadUpdate();
   console.log("Update available:", info.version);
 });
 
@@ -119,27 +302,6 @@ autoUpdater.on("update-not-available", () => {
 
 autoUpdater.on("error", (err) => {
   console.error("Updater error:", err);
-});
-
-// Start backend first, then frontend
-app.whenReady().then(() => {
-  try {
-    backendServer = startServer(CONFIG);
-    createWindow();
-
-    // Only check for updates in production
-    if (!isDev) {
-      // Enable updater logging
-      autoUpdater.logger = log;
-      autoUpdater.logger.transports.file.level = "info";
-      setTimeout(() => {
-        autoUpdater.checkForUpdatesAndNotify();
-      }, 10000);
-    }
-  } catch (err) {
-    console.error("Backend failed to start:", err);
-  }
-
 });
 
 app.on("web-contents-created", (event, contents) => {

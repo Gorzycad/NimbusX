@@ -16,3 +16,15 @@ contextBridge.exposeInMainWorld("api", {
   }
 
 });
+
+contextBridge.exposeInMainWorld("electron", {
+  openExternal: (url) => ipcRenderer.send("open-external", url),
+  
+  downloadFile: (fileId, token, fileName) =>
+  ipcRenderer.invoke("download-file", { fileId, token, fileName }),
+
+  onOAuthSuccess: (callback) => {
+    ipcRenderer.removeAllListeners("oauth-success");
+    ipcRenderer.on("oauth-success", (event, tokens) => callback(tokens));
+  },
+});

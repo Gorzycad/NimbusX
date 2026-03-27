@@ -2,9 +2,9 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 
 export default function ProtectedRoute({ children }) {
-  const { user, authReady, isLoggedIn } = useAuth();
+  const { user, authReady } = useAuth();
 
-   console.log("🔍 ProtectedRoute check:", { authReady, user, isLoggedIn });
+   console.log("🔍 ProtectedRoute check:", { authReady, user});
 
   // ⏳ Wait until Firebase auth initializes
   if (!authReady) {
@@ -17,8 +17,9 @@ export default function ProtectedRoute({ children }) {
   }
 
   // 🚫 Not logged in
-  if (!user && !isLoggedIn) {
+  if (!user) {
     console.log("🚫 No user detected. Redirecting to login.");
+    //return null; //or loading spinner
     return <Navigate to="/login" replace />;
   }
 

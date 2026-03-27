@@ -15,12 +15,12 @@ import { generateInvoicePdfBlob } from "../../helpers/generateInvoicePdfBlob";
 import MultiUploadWithDelete from "../leads/LeadsFileUpload";
 
 export default function Marketplace() {
-  const { companyId } = useAuth();
+  const { companyId, userRole } = useAuth();
   const [invoiceFiles, setInvoiceFiles] = useState({});
   const [paymentNotice, setPaymentNotice] = useState(
     "Please ensure payment is made within 7 working days."
   );
-
+  const [activePaymentPo, setActivePaymentPo] = useState(null);
   const [poList, setPoList] = useState([]);
   const [tracking, setTracking] = useState({});
 
@@ -47,7 +47,7 @@ export default function Marketplace() {
 
       const track = {};
       data.forEach(po => {
-        track[po.poId] = po.tracking;
+        track[po.id] = po.tracking || {};
       });
 
       setTracking(track);
@@ -98,15 +98,50 @@ export default function Marketplace() {
       boq,
     });
   };
+  /* -----------------------------
+       Invoice pdf downloader
+    ----------------------------- */
+  const downloadInvoicePdf = async (po) => {
+    if (!po.boqId) {
+      alert("BOQ not linked to this PO");
+      return;
+    }
+
+    const boqRef = doc(db, "companies", companyId, "boqs", po.boqId);
+    const snap = await getDoc(boqRef);
+
+    if (!snap.exists()) {
+      alert("BOQ not found");
+      return;
+    }
+
+    const boq = snap.data();
+
+    const blob = generateInvoicePdfBlob({ po, boq });
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `INV-${po.poId}.pdf`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
 
   /* -----------------------------
      Toggle tracking slider
   ----------------------------- */
-  const toggleTracking = async (poId, field) => {
+  const toggleTracking = async (po, field) => {
+    const poId = po.id;
+
+    const current = tracking[poId] || {};
+
     const updated = {
-      ...tracking[poId],
-      [field]: !tracking[poId][field],
+      ...current,
+      [field]: !current[field],
     };
 
     setTracking(prev => ({ ...prev, [poId]: updated }));
@@ -199,7 +234,6 @@ export default function Marketplace() {
                 <th>Company ID</th>
                 <th>PO ID</th>
                 <th>PO Download</th>
-                <th>Generate Invoice</th>
                 <th>Invoice Download</th>
                 <th>Payment Receipt</th>
               </tr>
@@ -211,6 +245,8 @@ export default function Marketplace() {
                   <td>{idx + 1}</td>
                   <td>{po.companyId}</td>
                   <td>{po.poId}</td>
+
+                  {/* PO DOWNLOAD */}
                   <td>
                     <button
                       className="btn btn-sm btn-outline-primary"
@@ -220,40 +256,29 @@ export default function Marketplace() {
                     </button>
                   </td>
 
-
-                  <td style={{ minWidth: 260 }}>
-                    {/* Show Generate button only if no invoice uploaded yet */}
-                    {!invoiceFiles[po.poId]?.length && (
-                      <button
-                        className="btn btn-sm btn-primary mb-2"
-                        onClick={() => generateInvoice(po)}
-                      >
-                        Generate Invoice
-                      </button>
-                    )}
-
-                    {/* Upload / Download Invoice PDF */}
-                    <MultiUploadWithDelete
-                      uploadedFiles={invoiceFiles[po.poId] || []}
-                      onFilesChange={(files) =>
-                        updateInvoiceFiles(po.poId, files)
-                      }
-                    />
+                  {/* ✅ AUTO INVOICE DOWNLOAD */}
+                  <td>
+                    <button
+                      className="btn btn-sm btn-success"
+                      onClick={() => downloadInvoicePdf(po)}
+                    >
+                      ⬇ Download Invoice
+                    </button>
                   </td>
 
+                  {/* ✅ PAYMENT RECEIPT BUTTON */}
                   <td>
-                    <input
-                      type="file"
-                      className="form-control form-control-sm"
-                      onChange={(e) =>
-                        uploadReceipt(po.poId, e.target.files[0])
-                      }
-                    />
+                    <button
+                      className="btn btn-sm btn-warning"
+                      onClick={() => setActivePaymentPo(po.poId)}
+                    >
+                      Pay Now
+                    </button>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="6" className="text-center">
                     No purchase orders available.
                   </td>
                 </tr>
@@ -264,52 +289,105 @@ export default function Marketplace() {
       </div>
 
       {/* ITEM TRACKING */}
-      <div className="card shadow-sm">
-        <div className="card-body">
-          <h5 className="mb-3">Item Tracking</h5>
+      {["developer", "app_support", "market_agent"].includes(userRole) && (
+        <div className="card shadow-sm">
+          <div className="card-body">
+            <h5 className="mb-3">Item Tracking</h5>
 
-          <table className="table table-bordered">
-            <thead className="table-light">
-              <tr>
-                <th>PO ID</th>
-                <th>Order Received</th>
-                <th>Warehouse</th>
-                <th>Packaged</th>
-                <th>Dispatched</th>
-                <th>Received at Site</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {poList.map(po => (
-                <tr key={po.poId}>
-                  <td>{po.poId}</td>
-
-                  {[
-                    "received",
-                    "warehouse",
-                    "packaged",
-                    "dispatched",
-                    "site",
-                  ].map(field => (
-                    <td key={field} className="text-center">
-                      <div className="form-check form-switch d-flex justify-content-center">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={tracking[po.poId]?.[field] || false}
-                          onChange={() => toggleTracking(po.poId, field)}
-                        />
-                      </div>
-                    </td>
-                  ))}
+            <table className="table table-bordered">
+              <thead className="table-light">
+                <tr>
+                  <th>PO ID</th>
+                  <th>Order Received</th>
+                  <th>Warehouse</th>
+                  <th>Packaged</th>
+                  <th>Dispatched</th>
+                  <th>Received at Site</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
 
+              <tbody>
+                {poList.map(po => (
+                  <tr key={po.poId}>
+                    <td>{po.poId}</td>
+
+                    {[
+                      "received",
+                      "warehouse",
+                      "packaged",
+                      "dispatched",
+                      "site",
+                    ].map(field => (
+                      <td key={field} className="text-center">
+                        <div className="form-check form-switch d-flex justify-content-center">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={tracking[po.id]?.[field] || false}
+                            onChange={() => toggleTracking(po, field)}
+                          />
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+      {activePaymentPo && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "#000000aa",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              width: "90%",
+              height: "90%",
+              margin: "2% auto",
+              background: "#fff",
+              borderRadius: 8,
+              overflow: "hidden",
+            }}
+          >
+            <button
+              onClick={() => setActivePaymentPo(null)}
+              style={{
+                position: "absolute",
+                top: 10,
+                right: 10,
+                zIndex: 10,
+                border: "none",
+                background: "red",
+                color: "#fff",
+                padding: "4px 8px",
+                borderRadius: 4,
+              }}
+            >
+              ✖
+            </button>
+
+            <iframe
+              src="https://paystack.shop/pay/5x75qlfimg"
+              title="Paystack Payment"
+              width="100%"
+              height="100%"
+              style={{ border: "none" }}
+            />
+          </div>
+        </div>
+      )
+      }
+    </div >
   );
 }

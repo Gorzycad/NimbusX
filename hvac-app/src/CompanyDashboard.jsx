@@ -51,7 +51,7 @@ export default function CompanyDashboard() {
     ]);
 
   const allowedPages = ROLE_ACCESS[normalizedRole] || [];
-  const isSuperUser = ["ceo", "director"].includes(normalizedRole);
+  const isSuperUser = ["ceo", "director", "company_admin"].includes(normalizedRole);
 
   return (
     <CompanyContext.Provider

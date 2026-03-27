@@ -1,34 +1,98 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button, Form, Card, Table } from "react-bootstrap";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  getDrivers,
+  addDriver as addDriverToDB,
+  deleteDriver as deleteDriverFromDB,
+  updateDriver as updateDriverInDB,
+  getEntries,
+  addEntry as addEntryToDB,
+  deleteEntry as deleteEntryFromDB,
+  updateEntry as updateEntryInDB
+} from "../../firebase/logisticsService";
 
 export default function Logistics() {
+  const { companyId } = useAuth();
+
+  useEffect(() => {
+  if (!companyId) return;
+
+  const loadData = async () => {
+    // LOAD DRIVERS
+    const driverData = await getDrivers(companyId);
+    setDrivers(driverData);
+
+    // LOAD CALENDAR ENTRIES
+    const entryData = await getEntries(companyId);
+
+    const formatted = {};
+
+    entryData.forEach((entry) => {
+      if (!formatted[entry.date]) {
+        formatted[entry.date] = [];
+      }
+      formatted[entry.date].push(entry);
+    });
+
+    setEntries(formatted);
+  };
+
+  loadData();
+}, [companyId]);
 
   /* =======================
      DRIVERS TABLE STATE
   ======================== */
   const [drivers, setDrivers] = useState([]);
 
-  const addDriver = () => {
-    setDrivers((prev) => [
-      ...prev,
-      {
-        name: "",
-        phone: "",
-        plate: "",
-        vehicle: "",
-      },
-    ]);
+  const addDriver = async () => {
+    const newDriver = {
+      name: "",
+      phone: "",
+      plate: "",
+      vehicle: "",
+    };
+
+    try {
+      const docRef = await addDriverToDB(companyId, newDriver);
+
+      setDrivers((prev) => [
+        ...prev,
+        { id: docRef.id, ...newDriver }
+      ]);
+    } catch (err) {
+      console.error("Error adding driver:", err);
+    }
   };
 
-  const removeDriver = (index) => {
-    setDrivers((prev) => prev.filter((_, i) => i !== index));
+  const removeDriver = async (index) => {
+    const driver = drivers[index];
+
+    if (!window.confirm("Delete this driver?")) return;
+
+    try {
+      await deleteDriverFromDB(companyId, driver.id);
+
+      setDrivers((prev) => prev.filter((_, i) => i !== index));
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
   };
 
-  const updateDriver = (index, field, value) => {
-    const updated = [...drivers];
-    updated[index][field] = value;
-    setDrivers(updated);
-  };
+  const updateDriver = async (index, field, value) => {
+  const updated = [...drivers];
+  updated[index][field] = value;
+  setDrivers(updated);
+
+  const driver = updated[index];
+
+  try {
+    await updateDriverInDB(companyId, driver.id, driver);
+  } catch (err) {
+    console.error("Driver update failed:", err);
+  }
+};
 
   /* =======================
      CALENDAR STATE
@@ -62,32 +126,63 @@ export default function Logistics() {
   const dateKey = (day) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-  const addEntry = (day) => {
-    const key = dateKey(day);
-    setEntries((prev) => ({
-      ...prev,
-      [key]: [...(prev[key] || []), { title: "", task: "", staff: "" }],
-    }));
+  const addEntry = async (day) => {
+  const key = dateKey(day);
+
+  const newEntry = {
+    date: key,
+    title: "",
+    task: "",
+    staff: "",
   };
 
-  const removeEntry = (day, index) => {
-    const key = dateKey(day);
+  try {
+    const docRef = await addEntryToDB(companyId, newEntry);
+
+    setEntries((prev) => ({
+      ...prev,
+      [key]: [...(prev[key] || []), { id: docRef.id, ...newEntry }]
+    }));
+  } catch (err) {
+    console.error("Error adding entry:", err);
+  }
+};
+
+  const removeEntry = async (day, index) => {
+  const key = dateKey(day);
+  const entry = entries[key][index];
+
+  try {
+    await deleteEntryFromDB(companyId, entry.id);
+
     setEntries((prev) => ({
       ...prev,
       [key]: prev[key].filter((_, i) => i !== index),
     }));
-  };
+  } catch (err) {
+    console.error("Delete entry failed:", err);
+  }
+};
 
-  const updateEntry = (day, index, field, value) => {
-    const key = dateKey(day);
-    const updated = [...entries[key]];
-    updated[index][field] = value;
+  const updateEntry = async (day, index, field, value) => {
+  const key = dateKey(day);
 
-    setEntries((prev) => ({
-      ...prev,
-      [key]: updated,
-    }));
-  };
+  const updated = [...entries[key]];
+  updated[index][field] = value;
+
+  setEntries((prev) => ({
+    ...prev,
+    [key]: updated,
+  }));
+
+  const entry = updated[index];
+
+  try {
+    await updateEntryInDB(companyId, entry.id, entry);
+  } catch (err) {
+    console.error("Entry update failed:", err);
+  }
+};
 
   const changeMonth = (dir) => {
     setCurrentMonth(new Date(year, month + dir, 1));
@@ -123,7 +218,7 @@ export default function Logistics() {
           )}
 
           {drivers.map((driver, index) => (
-            <tr key={index}>
+            <tr key={driver.id}>
               <td>{index + 1}</td>
 
               <td>

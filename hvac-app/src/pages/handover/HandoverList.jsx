@@ -310,6 +310,42 @@ export default function HandoverList() {
                 <tr key={item.id}>
                   <td>{item.createdBy?.name || "--"}</td>
                   <td>{item.projectName}</td>
+                  <td>
+                {item.fileUpload.length ? (
+                  <ul style={{ paddingLeft: 16 }}>
+                    {item.fileUpload.map(f => (
+                      <li key={f.fileId}>
+                        <button
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#1976d2",
+                            cursor: "pointer",
+                            textDecoration: "underline"
+                          }}
+                          onClick={async () => {
+                            const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+                            const token = tokens?.access_token;
+
+                            if (!token) {
+                              alert("You must login first");
+                              return;
+                            }
+
+                            const result = await window.electron.downloadFile(f.fileId, token, f.name)
+
+                            if (!result?.success) {
+                              alert("Download failed");
+                            }
+                          }}
+                        >
+                          ⬇ {f.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : "--"}
+              </td>
                   <td>{item.remarks || "--"}</td>
                   <td>
                     {(item.staffAssigned || [])

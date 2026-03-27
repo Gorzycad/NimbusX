@@ -6,9 +6,9 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; // ✅ Add this line for authentication support
+import { getAuth } from "firebase/auth";
 
-// ✅ Uses values from .env.local
+// ✅ Load config from environment variables
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
@@ -21,14 +21,18 @@ const firebaseConfig = {
 // ✅ Initialize Firebase app
 export const app = initializeApp(firebaseConfig);
 
+// ✅ Initialize storage
 export const storage = getStorage(app);
 
-// ✅ Enable Firestore offline persistence (keep your current setup)
+// ✅ Initialize Firestore
+// Uses long-polling in Electron dev to avoid IndexedDB errors
 export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true, // fixes Electron dev errors
+  merge: true, // keeps default Firestore behavior
   localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(), // multi-tab or multi-window sync
+    tabManager: persistentMultipleTabManager(), // multi-tab / multi-window sync
   }),
 });
 
-// ✅ Initialize and export Firebase Authentication
+// ✅ Initialize and export Auth
 export const auth = getAuth(app);
