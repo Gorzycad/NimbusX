@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { ROLE_ACCESS } from "../../config/roleAccess";
+import { useEffect } from "react";
 
 import {
   Home,
@@ -39,8 +40,30 @@ import {
 } from "lucide-react";
 
 export default function Sidebar() {
+  const [version, setVersion] = useState("");
   const navigate = useNavigate();
   const { user, role, logout } = useAuth();
+
+
+
+  useEffect(() => {
+    const loadVersion = async () => {
+      if (!window.appInfo?.getVersion) {
+        setVersion("dev");
+        return;
+      }
+
+      try {
+        const v = await window.appInfo.getVersion();
+        setVersion(v);
+      } catch {
+        setVersion("unknown");
+      }
+    };
+
+    loadVersion();
+  }, []);
+
   const normalizedRole = (role || "")
     .trim()
     .toLowerCase()
@@ -371,7 +394,7 @@ export default function Sidebar() {
 
             }}
           >
-            NimbusX v1.0.5
+            NimbusX v{version}
           </p>
         </div>
 

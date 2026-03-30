@@ -28,3 +28,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("oauth-success", (event, tokens) => callback(tokens));
   },
 });
+
+contextBridge.exposeInMainWorld("appInfo", {
+  getVersion: () => ipcRenderer.invoke("get-app-version"),
+});
+

@@ -1,12 +1,64 @@
 //src/pages/staff/Staff.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, deleteDoc, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { Table, Button } from "react-bootstrap";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import "bootstrap/dist/css/bootstrap.min.css";
+import { fetchStaff, deleteStaff } from "../../firebase/staffService";
+
+function StaffManager({ staffList, setStaffList, companyId }) {
+  const handleDelete = async (staffId) => {
+    const confirmed = window.confirm("Are you sure you want to delete this staff?");
+    if (!confirmed) return;
+
+    try {
+      await deleteStaff(companyId, staffId);
+      setStaffList(prev => prev.filter(s => s.id !== staffId));
+      alert("Staff deleted successfully!");
+    } catch (err) {
+      console.error("Error deleting staff:", err);
+      alert("Failed to delete staff. Try again.");
+    }
+  };
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <Table bordered striped hover>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>First Name</th>
+            <th>Last Name</th>
+            <th>Role</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {staffList.map((staff, index) => (
+            <tr key={staff.id}>
+              <td>{index + 1}</td>
+              <td>{staff.firstName}</td>
+              <td>{staff.lastName}</td>
+              <td>{staff.role}</td>
+              <td>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => handleDelete(staff.id)}
+                >
+                  Delete
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
+  );
+}
 
 export default function Staff() {
   const { companyId, user, role } = useAuth();
@@ -260,6 +312,23 @@ export default function Staff() {
         >
           Staff Subscription
         </h3>
+
+        <h3
+          onClick={() => setActiveView("staffManager")}
+          style={{
+            cursor: "pointer",
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "2px solid #0d6efd",
+            backgroundColor:
+              activeView === "staffManager" ? "#0d6efd" : "transparent",
+            color: activeView === "staffManager" ? "#fff" : "#0d6efd",
+            transition: "all 0.2s ease",
+            userSelect: "none",
+          }}
+        >
+          Staff Manager
+        </h3>
       </div>
 
 
@@ -344,6 +413,7 @@ export default function Staff() {
           </div>
         </>
       )}
+
       {activeView === "subscription" && (
         <div style={{ overflowX: "auto" }}>
           <Table bordered striped hover>
@@ -408,6 +478,17 @@ export default function Staff() {
           )}
         </div>
       )}
+
+
+
+
+
+      {activeView === "staffManager" && role === "company_admin" ? (
+        <StaffManager staffList={staffList} setStaffList={setStaffList} companyId={companyId} />
+      ) : activeView === "staffManager" ? (
+        <p style={{ color: "red" }}>Only Company Admin can access Staff Manager.</p>
+      ) : null}
+
       {showPaymentModal && (
         <div
           style={{
@@ -464,3 +545,4 @@ export default function Staff() {
     </div>
   );
 }
+

@@ -9,17 +9,25 @@ import log from "electron-log";
 import pkg from "electron-updater";
 import axios from "axios";
 import { google } from "googleapis";
-const { autoUpdater } = pkg;
+//import appPkg from "../package.json";
 
-const secretsPath = path.join(
-  os.homedir(),
-  "nimbusxsecrets",
-  "config.json"
+const appPkg = JSON.parse(
+  fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8")
 );
 
-if (!fs.existsSync(secretsPath)) {
-  throw new Error(`Missing config file at ${secretsPath}`);
-}
+console.log("App version:", appPkg.version);
+
+const { autoUpdater } = pkg;
+
+// const secretsPath = path.join(
+//   os.homedir(),
+//   "nimbusxsecrets",
+//   "config.json"
+// );
+
+// if (!fs.existsSync(secretsPath)) {
+//   throw new Error(`Missing config file at ${secretsPath}`);
+// }
 
 // --- Protocol registration (keep this) ---
 if (process.platform === "win32") {
@@ -117,9 +125,48 @@ if (!gotTheLock) {
 
 }
 
+let CONFIG;
+
+function loadConfig() {
+  try {
+    let configPath;
+
+    if (app.isPackaged) {
+      // ✅ Production (installed app)
+      configPath = path.join(process.resourcesPath, "config.json");
+    } else {
+      // ✅ Development
+      configPath = path.join(__dirname, "../config/config.json");
+    }
+
+    console.log("📁 Loading config from:", configPath);
+
+    if (!fs.existsSync(configPath)) {
+      throw new Error(`config.json not found at ${configPath}`);
+    }
+
+    const raw = fs.readFileSync(configPath, "utf8");
+    CONFIG = JSON.parse(raw);
+
+    console.log("✅ CONFIG loaded successfully");
+    console.log("CLIENT ID:", CONFIG.GOOGLE_CLIENT_ID);
+    console.log("CLIENT SECRET:", CONFIG.GOOGLE_CLIENT_SECRET);
+    console.log("CLIENT REDIRECT URI:", CONFIG.GOOGLE_REDIRECT_URI);
+
+  } catch (err) {
+    console.error("❌ Failed to load config:", err);
+    app.quit();
+  }
+}
+
 // --- Create window & start backend ---
 app.whenReady().then(() => {
   try {
+    loadConfig(); // ✅ LOAD CONFIG FIRST
+
+    if (!CONFIG) {
+      throw new Error("CONFIG not loaded before starting backend");
+    }
     backendServer = startServer(CONFIG);
     createWindow();
 
@@ -140,42 +187,41 @@ app.whenReady().then(() => {
       setTimeout(() => autoUpdater.checkForUpdates(), 5000);
       setInterval(() => autoUpdater.checkForUpdates(), 600000);
     }
-    const userHome = os.homedir();
 
-    const secretsDir = path.join(userHome, "nimbusxsecrets");
-    const configPath = path.join(secretsDir, "config.json");
+    // const userHome = os.homedir();
 
-    // 1. Create folder
-    if (!fs.existsSync(secretsDir)) {
-      fs.mkdirSync(secretsDir, { recursive: true });
-    }
+    // const secretsDir = path.join(userHome, "nimbusxsecrets");
+    // const configPath = path.join(secretsDir, "config.json");
 
-    // 2. Create config.json if not exists
-    const sourcePath = path.join(process.resourcesPath, "config.json");
+    // // 1. Create folder
+    // if (!fs.existsSync(secretsDir)) {
+    //   fs.mkdirSync(secretsDir, { recursive: true });
+    // }
 
-    if (!fs.existsSync(configPath)) {
-      fs.copyFileSync(sourcePath, configPath);
-    }
+    // // 2. Create config.json if not exists
+    // const sourcePath = path.join(process.resourcesPath, "config.json");
+
+    // if (!fs.existsSync(configPath)) {
+    //   fs.copyFileSync(sourcePath, configPath);
+    //}
 
   } catch (err) {
     console.error("Backend failed to start:", err);
   }
 });
 
-const CONFIG = JSON.parse(fs.readFileSync(secretsPath, "utf8"));
+//const CONFIG = JSON.parse(fs.readFileSync(secretsPath, "utf8"));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isDev = !app.isPackaged;
 
-console.log("CLIENT ID:", CONFIG.GOOGLE_CLIENT_ID);
-console.log("CLIENT SECRET:", CONFIG.GOOGLE_CLIENT_SECRET);
-console.log("CLIENT REDIRECT URI:", CONFIG.GOOGLE_REDIRECT_URI);
+
 
 
 let mainWindow;
-let backendServer;
+let backendServer = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -245,6 +291,10 @@ ipcMain.on("open-google-login", () => {
 
 ipcMain.on("open-external", (event, url) => {
   shell.openExternal(url);
+});
+
+ipcMain.handle("get-app-version", () => {
+  return app.getVersion();
 });
 
 ipcMain.handle("download-file", async (event, { fileId, token, fileName }) => {
