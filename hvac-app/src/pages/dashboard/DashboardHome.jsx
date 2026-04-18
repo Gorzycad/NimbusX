@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import Notifications from "./Notifications";
-
+import { formatRole } from "../../helpers/formatRole";
 import DirectMessages from "../chat/DirectMessages";
 import AdminAnnouncements from "../chat/AdminAnnouncements";
 import ProjectChat from "../chat/ProjectChat";
@@ -25,17 +25,15 @@ export default function DashboardHome() {
   };
 
   // ✅ Extract company and role from live profile
-  const companyIds = userData?.companyId || "N/A";
+  const companyIds = companyId || "N/A";
+
 
   return (
     <div style={{ padding: 30 }}>
-      <p><strong>User:</strong> {displayName || user.email}</p>
+      <p><strong>User:</strong> {displayName || user.displayName || user.email}</p>
       <p><strong>Company ID:</strong> {companyIds}</p>
-      <p><strong>Role:</strong>{" "}
-        {role
-          ?.split(" ")
-          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ")}
+      <p>
+        <strong>Role:</strong> {formatRole(role)}
       </p>
 
       <hr style={{ margin: "20px 5px" }} />

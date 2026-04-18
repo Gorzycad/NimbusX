@@ -9,7 +9,8 @@ import log from "electron-log";
 import pkg from "electron-updater";
 import axios from "axios";
 import { google } from "googleapis";
-//import appPkg from "../package.json";
+import fetch from "node-fetch";
+
 
 const appPkg = JSON.parse(
   fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8")
@@ -18,16 +19,6 @@ const appPkg = JSON.parse(
 console.log("App version:", appPkg.version);
 
 const { autoUpdater } = pkg;
-
-// const secretsPath = path.join(
-//   os.homedir(),
-//   "nimbusxsecrets",
-//   "config.json"
-// );
-
-// if (!fs.existsSync(secretsPath)) {
-//   throw new Error(`Missing config file at ${secretsPath}`);
-// }
 
 // --- Protocol registration (keep this) ---
 if (process.platform === "win32") {
@@ -322,6 +313,35 @@ ipcMain.handle("download-file", async (event, { fileId, token, fileName }) => {
 
   } catch (error) {
     console.error("Download failed:", error);
+    return { success: false };
+  }
+});
+
+
+
+ipcMain.handle("get-file-url", async (event, { fileId, accessToken }) => {
+  try {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch file");
+    }
+
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+
+    return {
+      success: true,
+      url: `data:image/png;base64,${base64}`,
+    };
+  } catch (err) {
+    console.error("get-file-url error:", err);
     return { success: false };
   }
 });

@@ -28,9 +28,11 @@ export default function ReportsPage() {
   const [awards, setAwards] = useState([]);
   const [executions, setExecutions] = useState([]);
   const [handovers, setHandovers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!companyId) return;
+    setLoading(true);
 
     Promise.all([
       getLeads(companyId),
@@ -44,8 +46,20 @@ export default function ReportsPage() {
       setAwards(a || []);
       setExecutions(e || []);
       setHandovers(h || []);
+      setLoading(false);
     });
   }, [companyId]);
+
+   if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-4">

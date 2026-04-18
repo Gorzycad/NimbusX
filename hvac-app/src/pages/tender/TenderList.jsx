@@ -36,6 +36,7 @@ export default function TenderList() {
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -50,7 +51,7 @@ export default function TenderList() {
   ----------------------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadStaff = async () => {
       const snap = await getDocs(
         collection(db, "companies", companyId, "users")
@@ -59,6 +60,7 @@ export default function TenderList() {
       setStaffList(
         snap.docs.map(d => ({ id: d.id, ...d.data() }))
       );
+      setLoading(false);
     };
 
     loadStaff();
@@ -204,6 +206,17 @@ export default function TenderList() {
 
     setTenders(prev => prev.filter(t => t.id !== id));
   };
+
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* -----------------------------
      JSX

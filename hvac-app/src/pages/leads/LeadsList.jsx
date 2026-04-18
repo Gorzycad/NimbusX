@@ -27,11 +27,11 @@ export default function LeadsList() {
   const [leads, setLeads] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
-
+  const [loading, setLoading] = useState(false);
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadStaff = async () => {
       const snap = await getDocs(
         collection(db, "companies", companyId, "users")
@@ -43,6 +43,7 @@ export default function LeadsList() {
       }));
 
       setStaffList(list);
+      setLoading(false);
     };
 
     loadStaff();
@@ -220,7 +221,17 @@ export default function LeadsList() {
       .join(", ");
   };
 
-
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="leads-container">
       <div className="leads-header">Company Leads</div>

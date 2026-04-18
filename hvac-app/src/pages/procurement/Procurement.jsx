@@ -41,6 +41,7 @@ export default function ProcurementPage() {
   const [vendors, setVendors] = useState([]);
   const [staffItems, setStaffItems] = useState([]);
   const [contractors, setContractors] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   //const [staffAssigned, setStaffAssigned] = useState([]);
   const [formData, setFormData] = useState({
@@ -52,7 +53,7 @@ export default function ProcurementPage() {
   /* ---------------- LOAD RECORDS ON TAB CHANGE ---------------- */
   useEffect(() => {
     if (!companyId || !activeTab) return;
-
+    setLoading(true);
     const loadRecords = async () => {
       const tabMap = {
         requisition: "requisitions",
@@ -67,6 +68,7 @@ export default function ProcurementPage() {
       );
 
       setRecords(data || []);
+      setLoading(false);
     };
 
     loadRecords();
@@ -296,6 +298,17 @@ export default function ProcurementPage() {
 
     html2pdf().set(opt).from(element).save();
   };
+
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* -----------------------------
      JSX

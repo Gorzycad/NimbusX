@@ -9,7 +9,6 @@ import { serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function Login() {
-  //const { setIsLoggedIn } = useAuth(); // ✅ add this
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -32,11 +31,9 @@ export default function Login() {
 
     try {
       // Clear previous session
-      //localStorage.clear();
       localStorage.removeItem("companyId");
       localStorage.removeItem("user");
       localStorage.removeItem("role");
-      //localStorage.removeItem("isLoggedIn");
 
       const auth = getAuth();
       const userCred = await signInWithEmailAndPassword(
@@ -59,7 +56,7 @@ export default function Login() {
 
 
       // Force refresh the token to get the latest custom claims
-      await firebaseUser.getIdToken(true);
+      //await firebaseUser.getIdToken(true);
 
       // 🔄 Auto-create / sync global user profile
       await setDoc(
@@ -92,32 +89,21 @@ export default function Login() {
             })
           );
           localStorage.setItem("role", role);
-          //localStorage.setItem("isLoggedIn", "true");
-          //setIsLoggedIn(true); // if you import useAuth
 
-          //window.location.href = "/CompanyDashboard";
           navigate("/CompanyDashboard", { replace: true });
-          // setTimeout(() => {
-          //   navigate("/CompanyDashboard", { replace: true });
-          // }, 50);
-          // setTimeout(() => {
-          //   window.location.reload();
-          // }, 10); // tiny delay ensures route update triggers first
-
           return;
         }
       }
 
-      // ✅ Inspect custom claims
-      const token = await firebaseUser.getIdTokenResult();
-      console.log("Custom claims:", token.claims);
+      // // ✅ Inspect custom claims
+      // const token = await firebaseUser.getIdTokenResult();
+      // console.log("Custom claims:", token.claims);
 
-      // Now you can safely use companyId from claims if needed
-      const companyIdFromClaims = token.claims.companyId;
-      console.log("Company ID from token:", companyIdFromClaims);
+      // // Now you can safely use companyId from claims if needed
+      // const companyIdFromClaims = token.claims.companyId;
+      // console.log("Company ID from token:", companyIdFromClaims);
 
       // Only perform Firestore reads AFTER login
-
       const userRef = doc(db, `users/${uid}`);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) throw new Error("User not found");
@@ -155,52 +141,20 @@ export default function Login() {
         return;
       }
 
-      // If userData still not set, fetch directly
-      // if (!userData) {
-      //   const userRef = doc(db, `companies/${companyId}/users/${uid}`);
-      //   const userSnap = await getDoc(userRef);
-      //   if (userSnap.exists()) {
-      //     userData = userSnap.data();
-      //     localStorage.setItem("user", JSON.stringify(userData));
-      //     localStorage.setItem(
-      //       "role",
-      //       (userData.role || "guest").toLowerCase()
-      //     );
-      //     localStorage.setItem("isLoggedIn", "true");
-      //     setIsLoggedIn(true); // if you import useAuth
-      //   } else {
-      //     alert("User profile not found. Please contact your admin.");
-      //     await signOut(auth);
-      //     setLoading(false);
-      //     return;
-      //   }
-      // }
 
       console.log("✅ Login successful:", userData, companyId);
+      const tokenResult = await userCred.user.getIdTokenResult();
 
-      // ✅ IMPORTANT FIX
-      //localStorage.setItem("isLoggedIn", "true");
-      //setIsLoggedIn(true);
-
+      console.log("TOKEN:", tokenResult);
+      console.log(tokenResult.claims);
       navigate("/CompanyDashboard", { replace: true });
-
-      // console.log("✅ Login successful:", userData, companyId);
-
-      // setTimeout(() => {
-      //   navigate("/CompanyDashboard", { replace: true });
-      // }, 50);
-
-      // navigate("/CompanyDashboard", { replace: true });
-      // setTimeout(() => {
-      //   window.location.reload();
-      // }, 500); // tiny delay ensures route update triggers first
 
     } catch (err) {
       console.error("❌ Login error:", err);
       if (err.code === "auth/wrong-password") {
         alert("Incorrect password");
       }
-      //alert("Login failed: " + (err?.message || err));
+
     } finally {
       setLoading(false);
     }

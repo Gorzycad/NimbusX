@@ -14,9 +14,11 @@ import {
 
 export default function Logistics() {
   const { companyId } = useAuth();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
   if (!companyId) return;
+  setLoading(true);
 
   const loadData = async () => {
     // LOAD DRIVERS
@@ -36,6 +38,7 @@ export default function Logistics() {
     });
 
     setEntries(formatted);
+    setLoading(false);
   };
 
   loadData();
@@ -187,6 +190,17 @@ export default function Logistics() {
   const changeMonth = (dir) => {
     setCurrentMonth(new Date(year, month + dir, 1));
   };
+
+   if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mt-4">

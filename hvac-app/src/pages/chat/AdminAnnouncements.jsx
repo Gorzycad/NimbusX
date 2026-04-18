@@ -61,7 +61,7 @@ export default function AdminAnnouncements() {
     return map;
   }, [staffList]);
 
-  const canPost = role === "Company Admin";
+  const canPost = role === "company_admin";
   console.log("Role:", role, "Can post:", canPost);
 
   /* -------------------------------------------------- */

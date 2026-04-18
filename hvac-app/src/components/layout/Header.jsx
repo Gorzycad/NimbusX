@@ -7,23 +7,39 @@ import { Building2, Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function Header() {
-  const { user, displayName, companyId } = useAuth();
-  const [companyDetails, setCompanyDetails] = useState({
-    name: "",
-    logourl: null,
-    logosize: 60,
-  });
-  const navigate = useNavigate();
+  const { user, displayName, companyId, authReady } = useAuth();
+  const [companyName, setCompanyName] = useState("");
+  const [companyLogo, setCompanyLogo] = useState(null);
 
+  const navigate = useNavigate();
+  const [logoSrc, setLogoSrc] = useState(null);
   // -----------------------------------------------------
   // 🔔 NOTIFICATIONS BADGE LISTENER
   // -----------------------------------------------------
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    if (!companyId) return;
+
+    const ref = doc(db, "companies", companyId);
+
+    const unsubscribe = onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+
+      setCompanyName(data.companyName || data.name || "");
+
+      setCompanyLogo(data.companyLogo || null);
+    });
+
+    return () => unsubscribe();
+  }, [companyId]);
+
+  useEffect(() => {
     if (!user || !companyId) return;
 
-    const notifRef = collection(db,"companies",companyId,"users",user.uid,"notifications");
+    const notifRef = collection(db, "companies", companyId, "users", user.uid, "notifications");
     const q = query(notifRef, orderBy("createdAt", "desc"));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -36,47 +52,45 @@ export default function Header() {
   }, [user, companyId]);
 
   useEffect(() => {
-    const fetchCompanyData = async () => {
-      if (!companyId) return;
+    const loadLogo = async () => {
+      if (!companyLogo?.fileId) return;
+
+      if (!window.electron?.getFileUrl) {
+        console.warn("Electron API not ready");
+        return;
+      }
 
       try {
-        const companyRef = doc(db, "companies", companyId);
-        const companySnap = await getDoc(companyRef);
+        const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+        const accessToken = tokens?.access_token;
 
-        if (companySnap.exists()) {
-          const data = companySnap.data();
-          const companyName = data.companyName || "Unnamed Company";
-          const logoUrl = data.companyLogoUrl || null;
+        if (!accessToken) return;
 
-          setCompanyDetails({
-            name: companyName,
-            logourl: logoUrl,
-            logosize: 60,
-          });
+        const result = await window.electron.getFileUrl(
+          companyLogo.fileId,
+          accessToken
+        );
 
-          localStorage.setItem("companyName", companyName);
-          localStorage.setItem("companyLogoUrl", logoUrl || "null");
-        } else {
-          console.warn("No company data found for ID:", companyId);
+        if (result?.success && result.url) {
+          setLogoSrc(result.url);
         }
       } catch (err) {
-        console.error("Error fetching company data:", err);
+        console.error("Failed to load logo:", err);
       }
     };
 
-    fetchCompanyData();
-  }, [companyId]);
+    loadLogo();
+  }, [companyLogo?.fileId]);
 
-  const companyName =
-    companyDetails.name && companyDetails.name !== "Unnamed Company"
-      ? companyDetails.name
-      : "My Company";
+  console.log("electron object:", window.electron);
 
-
-  const companyLogo =
-    companyDetails.logourl && companyDetails.logourl !== "null"
-      ? companyDetails.logourl
-      : Building2; // Fallback to Lucide icon
+  if (!authReady) {
+    return (
+      <header style={{ padding: 20 }}>
+        Loading...
+      </header>
+    );
+  }
 
   return (
     <header
@@ -93,33 +107,48 @@ export default function Header() {
     >
       {/* LEFT SIDE — Company */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <h2 style={{ margin: 0 }}>{companyName}</h2>
+        {/* <h2 style={{ margin: 0 }}>{companyName}</h2> */}
+        <h2>{companyName || "Loading..."}</h2>
 
-        {typeof companyLogo === "string" ? (
+        {logoSrc ? (
           <img
-            src={companyLogo}
+            src={logoSrc}
+            alt={`${companyName} Logo`}
+            style={{
+              height: 60,
+              objectFit: "contain",
+              borderRadius: 8,
+            }}
+          />
+        ) : (
+          <Building2 size={60} />
+        )}
+
+        {/* {typeof companyLogoDisplay === "string" ? (
+          <img
+            src={companyLogoDisplay}
             alt={`${companyName} Logo`}
             style={{
               width: "auto",
-              height: companyDetails.logosize,
+              height: 60,
               objectFit: "contain",
               borderRadius: 8,
             }}
           />
         ) : (
           // Render Lucide icon fallback
-          React.createElement(companyLogo, {
-            size: companyDetails.logosize,
+          React.createElement(companyLogoDisplay, {
+            size: 60,
             color: "#000",
           })
-        )}
+        )} */}
       </div>
 
       {/* LEFT SIDE — Welcome + Notifications */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
 
         {/* Welcome Text */}
-        <h4 style={{ margin: 0 }}>Welcome, {displayName || "User"}</h4>
+        <h4 style={{ margin: 0 }}>Welcome, {displayName || user?.displayName || "Loading..."}</h4>
 
         {/* 🔔 Notifications Button */}
         <div

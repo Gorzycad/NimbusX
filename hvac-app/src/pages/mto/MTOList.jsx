@@ -34,13 +34,14 @@ export default function MtoPage() {
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const load = async () => {
       const leads = await getLeads(companyId);
       const names = Array.from(
         new Set((leads || []).map(l => l.projectName).filter(Boolean))
       );
       setProjectList(names);
+      setLoading(false);
     };
 
     load();
@@ -318,6 +319,17 @@ export default function MtoPage() {
       </div>
     );
   }
+  
+   if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------------- JSX ---------------- */
   return (
@@ -371,7 +383,12 @@ export default function MtoPage() {
           <h5 className="fw-semibold mb-3">Saved MTOs</h5>
 
           {loading ? (
-            <div>Loading...</div>
+            <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+              <div className="text-center">
+                <div className="spinner-border text-primary" />
+                <div className="mt-2">Loading...</div>
+              </div>
+            </div>
           ) : (
             <table className="table table-bordered">
               <thead>

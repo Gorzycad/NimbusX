@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { ROLE_ACCESS } from "../../config/roleAccess";
 import { useEffect } from "react";
-
+import { formatRole } from "../../helpers/formatRole";
 import {
   Home,
   UserPlus,
@@ -221,6 +221,8 @@ export default function Sidebar() {
   const allowedPages = ROLE_ACCESS[normalizedRole]?.map(p => p.toLowerCase()) || [];
   const isSuperUser = ["ceo", "director"].includes(normalizedRole);
   const isDeveloper = ["developer"].includes(normalizedRole);
+  console.log("Role:", normalizedRole);
+  console.log("Allowed Pages:", allowedPages);
 
   // Role-based filtering
   const filteredSections = sections.map((section) => ({
@@ -269,12 +271,9 @@ export default function Sidebar() {
           <div>
             <strong>{user.displayName || "User"}</strong>
             <p style={{ fontSize: 12, color: "#444", margin: 0 }}>
-              {role
-                ?.split(" ")
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(" ")
-              }
+              {formatRole(role)}
             </p>
+
           </div>
         </div>
       )}
@@ -287,22 +286,14 @@ export default function Sidebar() {
             <div
               onClick={() => toggle(section.key)}
               style={{
-                //display: "flex",
-                //justifyContent: "space-between",
-                // alignItems: "center",
-                //fontWeight: "bold",
                 cursor: "pointer",
                 padding: "2px 4px",
-                //color: "#444",
-
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                //padding: "8px 12px",
                 fontSize: 15,
                 fontWeight: "bold",
                 color: "#555",
-                //textTransform: "uppercase",
 
               }}
             >
@@ -360,7 +351,6 @@ export default function Sidebar() {
             padding: "8px 12px",
             display: "flex",
             alignItems: "center",
-            //rowGapap: "50px",
             columnGap: "10px",
             borderRadius: 6,
             color: "#333",

@@ -48,6 +48,7 @@ export default function SupportPage() {
   // Set selected company (for normal users or developer)
   useEffect(() => {
     if (role === "developer") {
+      setLoading(true);
       const loadCompanies = async () => {
         const snap = await getDocs(collection(db, "companies"));
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -57,6 +58,7 @@ export default function SupportPage() {
       loadCompanies();
     } else if (user?.companyId) {
       setSelectedCompanyId(user.companyId);
+      setLoading(false);
     }
   }, [role, user]);
 
@@ -173,6 +175,17 @@ export default function SupportPage() {
   };
 
   if (role === "market_agent") return <p>Access denied. This page is not for you.</p>;
+ 
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 20 }}>
@@ -227,8 +240,8 @@ export default function SupportPage() {
         </div>
       )}
 
-      {loading && <p>Loading tickets...</p>}
-      {tickets.length === 0 && !loading && <p>No tickets yet.</p>}
+      {/* {loading && <p>Loading tickets...</p>}
+      {tickets.length === 0 && !loading && <p>No tickets yet.</p>} */}
 
       {tickets.map((ticket) => (
         <div

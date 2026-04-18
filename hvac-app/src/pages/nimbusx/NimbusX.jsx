@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { Table, Spinner } from "react-bootstrap";
+import { getDeveloperRevenue } from "../../firebase/nimbusXService";
 
 export default function DeveloperRevenue() {
   const { userData } = useAuth();
@@ -16,68 +17,101 @@ export default function DeveloperRevenue() {
   const [poRows, setPoRows] = useState([]);
   const [subscriptionRows, setSubscriptionRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [orderRows, setOrderRows] = useState([]);
+  const role = userData?.role?.toLowerCase();
+
+  
 
   /* ===============================
      LOAD DATA (DEVELOPER ONLY)
   ================================ */
   useEffect(() => {
-    if (!userData || userData.role !== "developer") return;
 
+    if (!userData || role !== "developer") return;
+
+    // const loadData = async () => {
+    //   setLoading(true);
+
+    //   const companiesSnap = await getDocs(collection(db, "companies"));
+
+    //   const poData = [];
+    //   const subData = [];
+
+    //   for (const company of companiesSnap.docs) {
+    //     const companyId = company.id;
+    //     const companyName = company.data().companyName || "--";
+
+    //     // Paid POs only
+    //     const poSnap = await getDocs(
+    //       query(
+    //         collection(db, "companies", companyId, "purchaseOrders"),
+    //         where("paymentReceived", "==", true)
+    //       )
+    //     );
+
+    //     poSnap.forEach((po) => {
+    //       poData.push({
+    //         companyId,
+    //         companyName,
+    //         poId: po.id,
+    //         profit: Number(po.data().profitAccrued || 0),
+    //       });
+    //     });
+
+    //     // Subscriptions
+    //     const subSnap = await getDocs(
+    //       collection(db, "companies", companyId, "subscriptions")
+    //     );
+
+    //     subSnap.forEach((sub) => {
+    //       subData.push({
+    //         companyId,
+    //         companyName,
+    //         createdAt: sub.data().createdAt,
+    //         amount: Number(sub.data().subscriptionAmount || 0),
+    //       });
+    //     });
+    //   }
+
+    //   setPoRows(poData);
+    //   setSubscriptionRows(subData);
+    //   setLoading(false);
+    // };
     const loadData = async () => {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      const companiesSnap = await getDocs(collection(db, "companies"));
+        const { poData, subData, orderData } = await getDeveloperRevenue();
 
-      const poData = [];
-      const subData = [];
+        setPoRows(poData);
+        setSubscriptionRows(subData);
+        setOrderRows(orderData); // ✅ NEW
 
-      for (const company of companiesSnap.docs) {
-        const companyId = company.id;
-        const companyName = company.data().companyName || "--";
+        console.log("🔥 PO DATA:", poData);
+        console.log("🔥 SUB DATA:", subData);
+        console.log("🔥 ORDER DATA:", orderData);
 
-        // Paid POs only
-        const poSnap = await getDocs(
-          query(
-            collection(db, "companies", companyId, "purchaseOrders"),
-            where("paymentReceived", "==", true)
-          )
-        );
-
-        poSnap.forEach((po) => {
-          poData.push({
-            companyId,
-            companyName,
-            poId: po.id,
-            profit: Number(po.data().profitAccrued || 0),
-          });
-        });
-
-        // Subscriptions
-        const subSnap = await getDocs(
-          collection(db, "companies", companyId, "subscriptions")
-        );
-
-        subSnap.forEach((sub) => {
-          subData.push({
-            companyId,
-            companyName,
-            createdAt: sub.data().createdAt,
-            amount: Number(sub.data().subscriptionAmount || 0),
-          });
-        });
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-
-      setPoRows(poData);
-      setSubscriptionRows(subData);
-      setLoading(false);
     };
 
     loadData();
-  }, [userData]);
+    console.log("🔥 userData:", userData);
+    console.log("🔥 role:", userData?.role);
+  }, [userData, role]);
+
+  console.log("ORDER ROWS:", orderRows);
+  const totalOrders = orderRows.reduce(
+    (sum, r) => sum + (r.amount || 0),
+    0
+  );
 
   /* ===============================
-     RENDER GUARDS (CORRECT)
-  ================================ */
+    RENDER GUARDS (CORRECT)
+ ================================ */
   if (!userData) {
     return (
       <div className="container py-4 text-center">
@@ -86,7 +120,7 @@ export default function DeveloperRevenue() {
     );
   }
 
-  if (userData.role !== "developer") {
+  if (role !== "developer") {
     return (
       <div className="container py-4">
         <h4 className="text-danger">Access denied</h4>
@@ -94,11 +128,22 @@ export default function DeveloperRevenue() {
     );
   }
 
-  const totalProfit = poRows.reduce((sum, r) => sum + r.profit, 0);
+  const totalProfit = poRows.reduce((sum, r) => sum + (r.amountPaid || 0), 0);
   const totalSubscription = subscriptionRows.reduce(
-    (sum, r) => sum + r.amount,
+    (sum, r) => sum + (r.amount || 0),
     0
   );
+  
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-4">
@@ -114,6 +159,7 @@ export default function DeveloperRevenue() {
             <th>Company Name</th>
             <th>PO ID</th>
             <th>Profit Accrued (₦)</th>
+            <th>Payment Date</th>
           </tr>
         </thead>
         <tbody>
@@ -123,7 +169,12 @@ export default function DeveloperRevenue() {
               <td>{row.companyId}</td>
               <td>{row.companyName}</td>
               <td>{row.poId}</td>
-              <td>{row.profit.toLocaleString()}</td>
+              <td>{row.amountPaid.toLocaleString()}</td>
+              <td>
+                {row.paidAt?.toDate
+                  ? row.paidAt.toDate().toLocaleDateString()
+                  : "--"}
+              </td>
             </tr>
           ))}
           <tr className="fw-bold">
@@ -154,7 +205,9 @@ export default function DeveloperRevenue() {
               <td>
                 {row.createdAt?.toDate
                   ? row.createdAt.toDate().toLocaleDateString()
-                  : "--"}
+                  : row.createdAt
+                    ? new Date(row.createdAt).toLocaleDateString()
+                    : "--"}
               </td>
               <td>{row.amount.toLocaleString()}</td>
             </tr>
@@ -162,6 +215,46 @@ export default function DeveloperRevenue() {
           <tr className="fw-bold">
             <td colSpan={4} className="text-end">TOTAL</td>
             <td>₦{totalSubscription.toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <h5 className="mt-5">Orders Revenue</h5>
+      <Table bordered striped hover>
+        <thead className="table-light">
+          <tr>
+            <th>#</th>
+            <th>Company ID</th>
+            <th>Company Name</th>
+            <th>Order ID</th>
+            <th>Order Date</th>
+            <th>Revenue (₦)</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {orderRows.map((row, i) => (
+            <tr key={i}>
+              <td>{i + 1}</td>
+              <td>{row.companyId}</td>
+              <td>{row.companyName}</td>
+              <td>{row.orderId}</td>
+
+              <td>
+                {row.createdAt?.toDate
+                  ? row.createdAt.toDate().toLocaleDateString()
+                  : row.createdAt
+                    ? new Date(row.createdAt).toLocaleDateString()
+                    : "--"}
+              </td>
+
+              <td>{(row.amount || 0).toLocaleString()}</td>
+            </tr>
+          ))}
+
+          <tr className="fw-bold">
+            <td colSpan={5} className="text-end">TOTAL</td>
+            <td>₦{totalOrders.toLocaleString()}</td>
           </tr>
         </tbody>
       </Table>

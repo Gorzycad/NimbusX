@@ -1,26 +1,34 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, getAuth, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-  //const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [role, setRole] = useState("guest");
   const [displayName, setDisplayName] = useState("");
   const [companyId, setCompanyId] = useState(null);
-  //const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+  const [companyLogo, setCompanyLogo] = useState(null);
+  const [companyName, setCompanyName] = useState("");
 
-  // useEffect(() => {
-  //   const storedLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-  //   setIsLoggedIn(storedLoggedIn);
-  // }, []);
+  useEffect(() => {
+    const cachedName = localStorage.getItem("companyName");
+    if (cachedName) setCompanyName(cachedName);
+  }, []);
+
+  useEffect(() => {
+    const cachedLogo = localStorage.getItem("companyLogo");
+
+    if (cachedLogo) {
+      setCompanyLogo(JSON.parse(cachedLogo));
+    }
+  }, []);
 
   useEffect(() => {
     // Listen for OAuth success from Electron
@@ -28,8 +36,6 @@ export function AuthProvider({ children }) {
       window.electron.onOAuthSuccess(() => {
         console.log("✅ OAuth success received from Electron");
 
-        //setIsLoggedIn(true);
-        //localStorage.setItem("isLoggedIn", "true");
 
         // optional: redirect user to dashboard
         window.location.href = "/CompanyDashboard/leads";
@@ -40,7 +46,6 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      //setLoading(true);
 
       console.log("🔥 Firebase auth state changed:", firebaseUser);
       setAuthReady(false);
@@ -52,51 +57,73 @@ export function AuthProvider({ children }) {
         setRole("guest");
         setCompanyId(null);
         setDisplayName("");
-        //setLoading(false);
         setAuthReady(true);
         return;
       }
 
       setCurrentUser(firebaseUser);
 
+      // 🔁 Auto-refresh email verification status
+      if (firebaseUser && !firebaseUser.emailVerified) {
+        console.log("⏳ Waiting for email verification...");
+
+        const interval = setInterval(async () => {
+          await firebaseUser.reload(); // 🔥 VERY IMPORTANT
+
+          if (firebaseUser.emailVerified) {
+            console.log("✅ Email verified detected!");
+
+            clearInterval(interval);
+
+            // Force token refresh so claims + auth update
+            await firebaseUser.getIdToken(true);
+
+            // 🔄 Trigger full auth reload
+            window.location.href = "/login";
+          }
+        }, 3000); // check every 3 seconds
+
+        setAuthReady(true);
+        return;
+      }
+
+      const normalizeRole = (role) =>
+        role?.toLowerCase().replace(/\s+/g, "_");
       try {
         // Force refresh to include latest custom claims
         await firebaseUser.getIdToken(true);
-        // 🔥 READ CUSTOM CLAIMS HERE
+
+        // Optional: keep for debugging only
         const tokenResult = await firebaseUser.getIdTokenResult();
-        console.log("🔥 Custom claims:", tokenResult.claims);
+        console.log("🔥 Custom claims (debug only):", tokenResult.claims);
         const uid = firebaseUser.uid;
 
         // Fetch user data from top-level /users collection
         const userRef = doc(db, "users", uid);
         const userSnap = await getDoc(userRef);
+        console.log("📄 userSnap:", userSnap.exists(), userSnap.data());
 
         if (!userSnap.exists()) {
-          console.error("❌ User document not found:", uid);
-          setCurrentUser(null);
-          setUserData(null);
-          setRole("guest");
-          setCompanyId(null);
-          setDisplayName("");
+          console.warn("⏳ User doc not ready yet... waiting");
 
-          // ⛑️ Fallback to claims if Firestore is missing
-          //setRole(tokenResult.claims.role || "guest");
-          const claimRole = normalizeRole(tokenResult.claims.role);
-          setRole(claimRole || "guest");
-          setCompanyId(tokenResult.claims.companyId || null);
-          setDisplayName(firebaseUser.email || "");
-
-          //setLoading(false);
           setAuthReady(true);
           return;
         }
 
+        // if (!userSnap.exists()) {
+        //   console.warn("⏳ User doc not ready yet, retrying...");
+
+        //   setTimeout(() => {
+        //     window.location.reload();
+        //   }, 1000);
+
+        //   return;
+        // }
+
         const data = userSnap.data();
 
         setUserData(data);
-        //setRole(data.role?.toLowerCase() || "guest");
-        const normalizeRole = (role) =>
-          role?.toLowerCase().replace(/\s+/g, "_");
+
 
         const normalizedRole = normalizeRole(data.role);
 
@@ -104,11 +131,31 @@ export function AuthProvider({ children }) {
         setCompanyId(data.companyId);
         setDisplayName(`${data.firstName || ""} ${data.lastName || ""}`.trim());
 
+
         // Cache locally
         localStorage.setItem("user", JSON.stringify(data));
         localStorage.setItem("role", data.role?.toLowerCase() || "guest");
         localStorage.setItem("companyId", data.companyId);
+        localStorage.setItem("companyLogo", data.companyLogoUrl || "");
 
+        if (data?.companyId) {
+          if (role !== "company_admin") {
+            return <p>Only admin can upload logo</p>;
+          }
+          const companyRef = doc(db, "companies", data.companyId);
+
+          onSnapshot(companyRef, (snap) => {
+            if (snap.exists()) {
+              const companyData = snap.data();
+
+              setCompanyName(companyData.companyName || "");
+              setCompanyLogo(companyData.companyLogo || null);
+
+              localStorage.setItem("companyLogo", JSON.stringify(companyData.companyLogo || null));
+              localStorage.setItem("companyName", companyData.companyName || "");
+            }
+          });
+        }
         // Optional: mark attendance
         const today = new Date();
         const day = today.getDate().toString();
@@ -126,15 +173,33 @@ export function AuthProvider({ children }) {
             "staff",
             uid
           );
-          await setDoc(attRef, { [day]: true }, { merge: true });
+          try {
+            if (data.companyId && ["company_admin", "developer"].includes(normalizedRole)) {
+              await setDoc(attRef, { [day]: true }, { merge: true });
+            }
+          } catch (e) {
+            console.warn("⚠️ Attendance write failed:", e.message);
+          }
         }
+
       } catch (err) {
         console.error("❌ Error loading Firestore user:", err);
+        //setRole("guest");
         setUserData(null);
-        setRole("guest");
         setCompanyId(null);
-      } finally {
-        //setLoading(false);
+
+        // // fallback to claims instead of killing role
+        // try {
+        //   const tokenResult = await firebaseUser.getIdTokenResult();
+        //   const claimRole = tokenResult.claims.role;
+
+        //   setRole(claimRole || "guest");
+        //   setCompanyId(tokenResult.claims.companyId || null);
+        // } catch {
+        //   setRole("guest");
+        // }
+      }
+      finally {
         setAuthReady(true);
       }
     });
@@ -146,19 +211,14 @@ export function AuthProvider({ children }) {
     const params = new URLSearchParams(window.location.search);
 
     if (params.get("oauth") === "success") {
-      //setIsLoggedIn(true);
-      //localStorage.setItem("isLoggedIn", "true");
 
-      // Clean URL
       window.history.replaceState(
         {},
         document.title,
         window.location.pathname
       );
     }
-    // else if (localStorage.getItem("isLoggedIn") === "true") {
-    //   //setIsLoggedIn(true);
-    // }
+
   }, []);
 
 
@@ -183,15 +243,12 @@ export function AuthProvider({ children }) {
     role,
     displayName,
     companyId,
-    //loading,
+    companyLogo, //ADD this
+    companyName,
     authReady,
     logout,
-    //isLoggedIn,
-    //setIsLoggedIn,
   };
 
-  // Only show loading state when actually loading
-  //if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
   if (!authReady) {
     return (
       <div

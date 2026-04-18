@@ -12,10 +12,13 @@ import {
 
 export default function Maintenance() {
   const { companyId } = useAuth();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    
 
     if (!companyId) return;
+    setLoading(true);
 
     const loadEntries = async () => {
 
@@ -32,6 +35,7 @@ export default function Maintenance() {
       });
 
       setEntries(formatted);
+      setLoading(false);
     };
 
     loadEntries();
@@ -132,6 +136,17 @@ export default function Maintenance() {
   const changeMonth = (dir) => {
     setCurrentMonth(new Date(year, month + dir, 1));
   };
+
+   if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mt-4">

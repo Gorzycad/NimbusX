@@ -302,7 +302,14 @@ export default function InventoryPage() {
   };
 
   if (loading) {
-    return <div className="text-center mt-5">Loading inventory...</div>;
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
   }
 
   const handleTakeOut = async () => {

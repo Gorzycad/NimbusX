@@ -14,6 +14,7 @@ export default function FinancePage() {
   const [poSummary, setPoSummary] = useState([]);
   const [profitLoss, setProfitLoss] = useState([]);
   const [retentionClaims, setRetentionClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const tabs = [
     { id: "projects", label: "Project Financials", state: [projects, setProjects], columns: ["project", "contractValue", "budget", "actualCost", "profit", "status"], templates: { project: "", contractValue: "", budget: "", actualCost: "", profit: "", status: "" } },
@@ -29,9 +30,11 @@ export default function FinancePage() {
      Load all tab data
   ------------------------- */
   useEffect(() => {
+    setLoading(true);
     tabs.forEach(async (tab) => {
       const rows = await financeService.getFinanceRows(companyId, tab.id);
       tab.state[1](rows); // set state
+      setLoading(false);
     });
   }, [companyId]);
 
@@ -45,6 +48,17 @@ export default function FinancePage() {
   const netCash = totalReceived - totalExpenses;
   const outstandingReceivables = totalInvoiced - totalReceived;
 
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="container py-4">
       <h2 className="mb-4">Business Finance Management</h2>

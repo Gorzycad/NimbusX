@@ -22,7 +22,6 @@ const TYPE_LABELS = {
 function Notifications() {
   const { user, companyId } = useAuth();
   const navigate = useNavigate();
-
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(() => {
     const saved = localStorage.getItem("notifDropdownOpen");

@@ -35,6 +35,7 @@ export default function AwardPage() {
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     projectName: "",
@@ -45,7 +46,7 @@ export default function AwardPage() {
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadStaff = async () => {
       const snap = await getDocs(
         collection(db, "companies", companyId, "users")
@@ -54,6 +55,7 @@ export default function AwardPage() {
       setStaffList(
         snap.docs.map(d => ({ id: d.id, ...d.data() }))
       );
+      setLoading(false);
     };
 
     loadStaff();
@@ -78,11 +80,12 @@ export default function AwardPage() {
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadProjects = async () => {
       const leads = await getLeads(companyId);
       const names = Array.from(new Set(leads.map(l => l.projectName)));
       setProjectList(names);
+      setLoading(false);
     };
 
     loadProjects();
@@ -189,6 +192,17 @@ export default function AwardPage() {
     await deleteAward(companyId, id);
     setAwards(prev => prev.filter(a => a.id !== id));
   };
+  
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------------- UI ---------------- */
   return (

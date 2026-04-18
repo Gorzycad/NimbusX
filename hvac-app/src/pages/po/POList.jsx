@@ -32,11 +32,12 @@ export default function PurchaseOrderPage() {
   const [boqList, setBoqList] = useState([]);
   const [selectedBoqId, setSelectedBoqId] = useState("");
   const [staffList, setStaffList] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadStaff = async () => {
       const snap = await getDocs(
         collection(db, "companies", companyId, "users")
@@ -45,6 +46,7 @@ export default function PurchaseOrderPage() {
       setStaffList(
         snap.docs.map(d => ({ id: d.id, ...d.data() }))
       );
+      setLoading(false);
     };
 
     loadStaff();
@@ -92,7 +94,7 @@ export default function PurchaseOrderPage() {
   // Load saved POs
   useEffect(() => {
     if (!companyId) return;
-
+    
     const fetch = async () => {
       const items = await getPOs(companyId);
       const sorted = (items || []).sort((a, b) => {
@@ -155,6 +157,20 @@ export default function PurchaseOrderPage() {
     setFormData({ ...formData, tableData: updated });
   };
 
+  const calculateBoqTotal = (boq) => {
+    const all = [
+      ...(boq.mechanical || []),
+      ...(boq.electrical || []),
+      ...(boq.plumbing || []),
+    ];
+
+    return all.reduce((sum, item) => {
+      const qty = Number(item.qty || 0);
+      const rate = Number(String(item.rate || 0).replace(/,/g, ""));
+      return sum + qty * rate;
+    }, 0);
+  };
+
   // ----------------------------
   // SEND TO SUPPLIER BUTTON
   const handleSendToMarketplace = async () => {
@@ -164,6 +180,7 @@ export default function PurchaseOrderPage() {
     const creatorName = staffNameMap[user.uid] || "Unknown User";
     const poId = generatePOId();
     const boq = boqList.find(b => b.id === boqId);
+    const totalAmount = calculateBoqTotal(boq);
 
     // Clean formData BEFORE sending it to Firestore
     const cleanedFormData = {
@@ -185,6 +202,8 @@ export default function PurchaseOrderPage() {
         electrical: boq.electrical || [],
         plumbing: boq.plumbing || [],
       },
+      totalAmount: calculateBoqTotal(boq),
+
       sentToMarketplace: true,
 
       // PDF will be attached later (cloud function / backend)
@@ -324,6 +343,18 @@ export default function PurchaseOrderPage() {
       })
       .join(", ");
   };
+
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
   // ----------------------------
   // RENDER
   return (

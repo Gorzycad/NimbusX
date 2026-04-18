@@ -1,13 +1,21 @@
 //src/pages/staff/Staff.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { collection, deleteDoc, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { Table, Button } from "react-bootstrap";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { fetchStaff, deleteStaff } from "../../firebase/staffService";
+import {
+  deleteDoc,
+  setDoc,
+  addDoc,
+  serverTimestamp
+} from "firebase/firestore";
+import { usePaystackPayment } from "react-paystack";
+import LeadsFileUpload from "../leads/LeadsFileUpload";
 
 function StaffManager({ staffList, setStaffList, companyId }) {
   const handleDelete = async (staffId) => {
@@ -66,20 +74,90 @@ export default function Staff() {
   const [attendance, setAttendance] = useState({});
   const [daysInMonth, setDaysInMonth] = useState(31);
   const [activeView, setActiveView] = useState("attendance");
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  //const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // "attendance" | "subscription"
   const [companyName, setCompanyName] = useState("");
+  const [logoFiles, setLogoFiles] = useState([]);
+
+  const handleLogoUpload = async () => {
+    if (!logoFiles.length) {
+      alert("Please upload a logo first");
+      return;
+    }
+
+    const logo = logoFiles[0];
+
+    if (!logo?.fileId) {
+      alert("Invalid file. Please upload again.");
+      return;
+    }
+
+    try {
+      await setDoc(
+        doc(db, "companies", companyId),
+        {
+          companyLogo: {
+            fileId: logo.fileId || null,
+            name: logo.name || "",
+          },
+        },
+        { merge: true }
+      );
+
+      alert("Logo saved successfully!");
+    } catch (err) {
+      console.error("Logo save error:", err);
+      alert("Failed to save logo");
+    }
+  };
 
   const now = new Date();
   const year = now.getFullYear();
   const month = (now.getMonth() + 1).toString().padStart(2, "0");
   const monthLabel = `${year}-${month}`;
 
+  const payWithPaystack = (config, onSuccess) => {
+    if (!window.PaystackPop) {
+      alert("Paystack not loaded");
+      return;
+    }
+
+
+
+    const handler = window.PaystackPop.setup({
+      key: config.key,
+      email: config.email,
+      amount: config.amount,
+      ref: config.reference,
+
+      metadata: {
+        custom_fields: [
+          {
+            display_name: "Payment Type",
+            variable_name: "payment_type",
+            value: config.type || "general",
+          },
+        ],
+      },
+
+      callback: function (response) {
+        onSuccess(response);
+      },
+
+      onClose: function () {
+        console.log("❌ Payment closed");
+      },
+    });
+
+    handler.openIframe();
+  };
+
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadStaff = async () => {
       const staffSnap = await getDocs(
         collection(db, "companies", companyId, "users")
@@ -91,6 +169,7 @@ export default function Staff() {
       }));
 
       setStaffList(list);
+      setLoading(false);
     };
 
     loadStaff();
@@ -145,6 +224,75 @@ export default function Staff() {
 
     if (staffList.length) loadAttendance();
   }, [companyId, staffList, year, month, now.getMonth()]);
+
+  const monthlyFee = 25000;
+  const numberOfUsers = staffList.length;
+  const totalDue = monthlyFee * numberOfUsers;
+
+  // const config = {
+  //   reference: "SUB_" + Date.now(),
+  //   email: user?.email,
+  //   amount: totalDue * 100,
+  //   //publicKey: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
+  //   key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
+  // };
+
+  //const initializePayment = usePaystackPayment(config);
+
+  const handleSubscriptionPayment = () => {
+    // initializePayment(
+    //   async (response) => {
+    //     console.log("✅ Subscription Payment Success:", response);
+
+    //     try {
+    //       await addDoc(
+    //         collection(db, "companies", companyId, "subscriptions"),
+    //         {
+    //           subscriptionAmount: totalDue,
+    //           createdAt: serverTimestamp(),
+    //           paymentRef: response.reference,
+    //           month: month,
+    //           year: year,
+    //           companyName: companyName,
+    //         }
+    //       );
+
+    //       alert("Subscription payment successful!");
+    //     } catch (err) {
+    //       console.error("🔥 Error saving subscription:", err);
+    //       alert("Payment succeeded but saving failed.");
+    //     }
+    //   },
+    //   () => {
+    //     console.log("❌ Payment closed");
+    //   }
+    // );
+
+    payWithPaystack(
+      {
+        reference: "SUB_" + Date.now(),
+        email: user?.email,
+        amount: totalDue * 100,
+        //key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
+        key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
+        type: "subscription",
+      },
+      async (response) => {
+        console.log("✅ Checkout success:", response);
+        await addDoc(
+          collection(db, "companies", companyId, "subscriptions"),
+          {
+            subscriptionAmount: totalDue,
+            createdAt: serverTimestamp(),
+            paymentRef: response.reference,
+            month: month,
+            year: year,
+            companyName: companyName,
+          }
+        );
+      }
+    );
+  };
 
   /* ---------------- EXPORT PDF ---------------- */
   const exportToPDF = () => {
@@ -242,15 +390,23 @@ export default function Staff() {
     docPdf.save(`Attendance_${monthLabel}.pdf`);
   };
 
-  const monthlyFee = 3500;
-  const numberOfUsers = staffList.length;
-  const totalDue = monthlyFee * numberOfUsers;
+
 
   const months = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   ];
 
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 20 }}>
@@ -450,7 +606,7 @@ export default function Staff() {
                     <Button
                       size="sm"
                       variant="success"
-                      onClick={() => setShowPaymentModal(true)}
+                      onClick={handleSubscriptionPayment}
                     >
                       Pay Now
                     </Button>
@@ -484,64 +640,45 @@ export default function Staff() {
 
 
       {activeView === "staffManager" && role === "company_admin" ? (
-        <StaffManager staffList={staffList} setStaffList={setStaffList} companyId={companyId} />
+        <>
+          {/* 🔥 COMPANY LOGO UPLOAD */}
+          <div style={{
+            border: "1px solid #ddd",
+            padding: 16,
+            borderRadius: 8,
+            marginBottom: 20,
+            background: "#fafafa"
+          }}>
+            <h4>Company Logo</h4>
+
+            <LeadsFileUpload
+              uploadedFiles={logoFiles}
+              onFilesChange={(files) => {
+                // only keep ONE file (logo must be single)
+                const singleFile = files.slice(-1);
+                setLogoFiles(singleFile);
+              }}
+            />
+
+            <Button className="mt-2" onClick={handleLogoUpload}>
+              Save Logo
+            </Button>
+          </div>
+
+          {/* 🔥 STAFF LIST */}
+          <StaffManager
+            staffList={staffList}
+            setStaffList={setStaffList}
+            companyId={companyId}
+          />
+        </>
       ) : activeView === "staffManager" ? (
-        <p style={{ color: "red" }}>Only Company Admin can access Staff Manager.</p>
+        <p style={{ color: "red" }}>
+          Only Company Admin can access Staff Manager.
+        </p>
       ) : null}
 
-      {showPaymentModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            backgroundColor: "rgba(0,0,0,0.6)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 9999,
-          }}
-        >
-          <div
-            style={{
-              width: "500px",
-              height: "650px",
-              backgroundColor: "#fff",
-              borderRadius: 8,
-              overflow: "hidden",
-              position: "relative",
-            }}
-          >
-            <button
-              onClick={() => setShowPaymentModal(false)}
-              style={{
-                position: "absolute",
-                top: 10,
-                right: 10,
-                zIndex: 10,
-                border: "none",
-                background: "red",
-                color: "#fff",
-                padding: "4px 8px",
-                borderRadius: 4,
-              }}
-            >
-              ✖
-            </button>
 
-            <iframe
-              //src="https://paystack.shop/pay/ilwzb87dsa"
-              src="https://paystack.shop/pay/5x75qlfimg"
-              title="Paystack Payment"
-              width="100%"
-              height="100%"
-              style={{ border: "none" }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

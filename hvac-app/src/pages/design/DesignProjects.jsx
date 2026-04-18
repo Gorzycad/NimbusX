@@ -63,6 +63,7 @@ export default function DesignPage() {
   //const [boqRanges, setBoqRanges] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [showBOQ, setShowBOQ] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     projectName: "",
@@ -130,10 +131,11 @@ export default function DesignPage() {
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadProjects = async () => {
       const leads = await getLeads(companyId);
       setProjectList([...new Set(leads.map(l => l.projectName))]);
+      setLoading(false);
     };
 
     loadProjects();
@@ -719,6 +721,17 @@ export default function DesignPage() {
 
     alert("BOQ generated successfully, please visit check BOQ Menu");
   };
+
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------------- UI ---------------- */
   return (

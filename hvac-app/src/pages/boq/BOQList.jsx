@@ -48,12 +48,14 @@ export default function BoqPage() {
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
+    setLoading(true);
     const load = async () => {
       const leads = await getLeads(companyId);
       const names = Array.from(
         new Set((leads || []).map((l) => l.projectName).filter(Boolean))
       );
       setProjectList(names);
+      setLoading(false);
     };
     load();
   }, [companyId]);
@@ -302,6 +304,17 @@ export default function BoqPage() {
     setBoqRows(items || []);
   }
 
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+  
   /* ---------------- RENDER SECTION TABLE ---------------- */
   function renderSectionEditor(section) {
 

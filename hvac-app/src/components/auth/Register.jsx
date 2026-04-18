@@ -13,7 +13,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../../firebase/firebase";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+//import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useNavigate, Link } from "react-router-dom";
 import { ROLE_ACCESS } from "../../config/roleAccess";
 
@@ -32,9 +32,10 @@ export default function Register() {
   const [companyId, setCompanyId] = useState("");
   const [generatedId, setGeneratedId] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [logoFile, setLogoFile] = useState(null);
+  
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -44,6 +45,8 @@ export default function Register() {
     role: "",
     companyName: "",
   });
+
+
 
   const navigate = useNavigate();
 
@@ -121,7 +124,7 @@ export default function Register() {
     setSubmitting(true);
 
     try {
-      const auth = getAuth();
+      //const auth = getAuth();
 
       // 1️⃣ Create Firebase Auth user
       const userCred = await createUserWithEmailAndPassword(
@@ -139,27 +142,25 @@ export default function Register() {
 
       // 3️⃣ Determine companyId
       let finalCompanyId = companyId;
-      let logoUrl = "";
+      // let logoUrl = "";
 
       if (mode === "create") {
         finalCompanyId = await ensureUniqueCompanyId(generatedId);
 
-        // Upload logo if provided
-        if (logoFile) {
-          const storage = getStorage();
-          const logoRef = ref(storage, `companies/${finalCompanyId}/logo.png`);
-          await uploadBytes(logoRef, logoFile);
-          logoUrl = await getDownloadURL(logoRef);
-        }
-
         // Save company info
         await setDoc(doc(db, "companies", finalCompanyId), {
           companyName: form.companyName,
-          companyLogoUrl: logoUrl || null,
+          companyLogo: null,
           createdAt: serverTimestamp(),
           createdBy: uid,
           createdByEmail: form.email.trim(),
         });
+
+        // companyLogo = {
+        //   fileId,
+        //   name
+        // }
+
       } else {
         // Joining existing company
         const exists = await checkCompanyExists(companyId);
@@ -180,29 +181,65 @@ export default function Register() {
         createdAt: serverTimestamp(),
       };
 
-      // Save to companies/{companyId}/users/{uid}
-      await setDoc(doc(db, "companies", finalCompanyId, "users", uid), profileData);
 
       // 5️⃣ Save to top-level users collection
       await setDoc(doc(db, "users", uid), {
         ...profileData,
         uid,
-        createdAt: serverTimestamp(),
       });
+      console.log("Auth UID:", auth.currentUser?.uid);
+      console.log("Doc UID:", uid);
+
+
+      // Save to companies/{companyId}/users/{uid}
+      await setDoc(doc(db, "companies", finalCompanyId, "users", uid), profileData);
+
+
+      const token = await userCred.user.getIdToken();
+
+      // await fetch("/set-claims", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //     Authorization: `Bearer ${token}`,
+      //   },
+      //   body: JSON.stringify({
+      //     uid,
+      //     role: profileData.role,
+      //     companyId: finalCompanyId
+      //   }),
+      // });
+
+      // wait a bit before refresh
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+
+      //await userCred.user.getIdToken(true);
 
       // 6️⃣ Send email verification
       await sendEmailVerification(userCred.user);
 
-      alert(
-        `🎉 Account created!\nA verification email has been sent to: ${form.email}\n\nPlease verify your email before signing in.`
-      );
+      // ✅ Mark registration complete BEFORE stopping loader
+      setRegistrationComplete(true);
 
-      window.location.href = "/login";
+      alert(
+        `🎉 Account created!\nA verification email has been sent to: ${form.email}\n\nPlease check inbox or spam folder to verify your email before logging in.`
+      );
+      // 🔥 CRITICAL FIX — force clean login flow
+      await auth.signOut();
+
+      // ✅ Stop loading AFTER alert
+      setSubmitting(false);
+
+      // ❌ REMOVE auto redirect (this is important)
     } catch (err) {
       console.error("Register error:", err);
       alert("Registration failed: " + (err?.message || err));
     } finally {
-      setSubmitting(false);
+      // Only stop loading if NOT successful
+      if (!registrationComplete) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -312,28 +349,6 @@ export default function Register() {
             </div>
 
             <div>
-              <label>Upload Company Logo</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setLogoFile(e.target.files[0])}
-              />
-              {logoFile && (
-                <img
-                  src={URL.createObjectURL(logoFile)}
-                  alt="Logo Preview"
-                  style={{
-                    height: 80,
-                    marginTop: 8,
-                    borderRadius: 8,
-                    border: "1px solid #ccc",
-                    objectFit: "contain",
-                  }}
-                />
-              )}
-            </div>
-
-            <div>
               <label>Company ID (5 digits)</label>
 
               <div style={{ display: "flex", gap: 8 }}>
@@ -398,14 +413,24 @@ export default function Register() {
 
         <button type="submit" disabled={submitting}>
           {submitting
-            ? "Creating account..."
+            ? mode === "create"
+              ? "Creating..."
+              : "Joining..."
             : mode === "create"
               ? "Create company & account"
               : "Join company & create account"}
         </button>
 
         <div style={{ marginTop: 10 }}>
-          Already have an account? <Link to="/login">Sign in</Link>
+          {registrationComplete ? (
+            <>
+              Proceed to <Link to="/login">Login</Link>
+            </>
+          ) : (
+            <>
+              Already have an account? <Link to="/login">Sign in</Link>
+            </>
+          )}
         </div>
       </form>
     </div>

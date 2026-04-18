@@ -33,7 +33,8 @@ export default function HandoverList() {
   const [projectList, setProjectList] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [editingId, setEditingId] = useState(null);
-
+  const [loading, setLoading] = useState(true);
+  
   const [formData, setFormData] = useState({
     projectName: "",
     fileUpload: [],
@@ -81,10 +82,11 @@ export default function HandoverList() {
   ----------------------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadProjects = async () => {
       const leads = await getLeads(companyId);
       setProjectList([...new Set(leads.map(l => l.projectName))]);
+      setLoading(false);
     };
 
     loadProjects();
@@ -206,6 +208,17 @@ export default function HandoverList() {
     await deleteHandover(companyId, id);
     setHandoverList(prev => prev.filter(h => h.id !== id));
   };
+
+   if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* -----------------------------
      JSX

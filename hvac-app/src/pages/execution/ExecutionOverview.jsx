@@ -49,6 +49,7 @@ export default function ExecutionPage() {
   const [projectList, setProjectList] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     projectName: "",
@@ -63,7 +64,7 @@ export default function ExecutionPage() {
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
     if (!companyId) return;
-
+    setLoading(true);
     const loadStaff = async () => {
       const snap = await getDocs(
         collection(db, "companies", companyId, "users")
@@ -72,6 +73,7 @@ export default function ExecutionPage() {
       setStaffList(
         snap.docs.map(d => ({ id: d.id, ...d.data() }))
       );
+      setLoading(false);
     };
 
     loadStaff();
@@ -225,6 +227,17 @@ export default function ExecutionPage() {
     await deleteExecution(companyId, id);
     setExecutions(prev => prev.filter(e => e.id !== id));
   };
+
+   if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   /* ---------------- RENDER ---------------- */
 

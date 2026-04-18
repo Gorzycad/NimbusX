@@ -27,9 +27,13 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.removeAllListeners("oauth-success");
     ipcRenderer.on("oauth-success", (event, tokens) => callback(tokens));
   },
+
+  getFileUrl: (fileId, accessToken) =>
+    ipcRenderer.invoke("get-file-url", { fileId, accessToken }),
 });
 
 contextBridge.exposeInMainWorld("appInfo", {
   getVersion: () => ipcRenderer.invoke("get-app-version"),
 });
+
 

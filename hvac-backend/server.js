@@ -1,4 +1,13 @@
 // backend/server.js
+import admin from "firebase-admin";
+//import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
+const serviceAccount = JSON.parse(
+  fs.readFileSync(new URL("./serviceAccountKey.json", import.meta.url))
+);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+console.log("Admin initialized at server.js:", !!admin.apps.length);
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -129,6 +138,29 @@ export function startServer(CONFIG) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.post("/set-claims", async (req, res) => {
+    const idToken = req.headers.authorization?.split("Bearer ")[1];
+
+    if (!idToken) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    const decoded = await admin.auth().verifyIdToken(idToken);
+
+    // Optional: restrict who can assign roles
+    // e.g. only developer
+    // if (decoded.role !== "developer") return res.status(403)
+
+    const { uid, role, companyId } = req.body;
+
+    await admin.auth().setCustomUserClaims(uid, {
+      role,
+      companyId,
+    });
+
+    res.send({ success: true });
   });
 
   // =====================
