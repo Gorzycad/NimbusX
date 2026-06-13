@@ -9,7 +9,7 @@ import {
   updateHandover,
   deleteHandover,
 } from "../../firebase/handoverService";
-
+import UploadPage from "../leads/LeadsFileUpload";
 import MultiUploadWithDelete from "../leads/LeadsFileUpload";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
@@ -18,23 +18,36 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { notifyAssignedStaff } from "../leads/LeadsListHelper";
 
+
 /* -----------------------------
    Helper (same as Tender)
 ----------------------------- */
-function cleanData(data) {
-  return Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
+function deepClean(obj) {
+  if (Array.isArray(obj)) {
+    return obj
+      .map(deepClean)
+      .filter(v => v !== undefined);
+  }
+
+  if (obj && typeof obj === "object") {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== undefined)
+        .map(([k, v]) => [k, deepClean(v)])
+    );
+  }
+
+  return obj;
 }
 
 export default function HandoverList() {
-  const { companyId, user } = useAuth();
+  const { companyId, user, role, displayName } = useAuth();
   const [handoverList, setHandoverList] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   const [formData, setFormData] = useState({
     projectName: "",
     fileUpload: [],
@@ -42,6 +55,7 @@ export default function HandoverList() {
     staffAssigned: [],
     completionStatus: "Project not Completed",
   });
+
 
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
@@ -122,10 +136,10 @@ export default function HandoverList() {
 
     // const creatorName = staffNameMap[user.uid] || user.email || "Unknown User";
 
-    const cleaned = {
-      ...cleanData(formData),
+    const cleaned = deepClean({
+      ...formData,
       staffAssigned: formData.staffAssigned,
-    };
+    });
 
     // only set createdBy on create
     if (!editingId) {
@@ -135,6 +149,11 @@ export default function HandoverList() {
         name: creatorName,
       };
     }
+
+    console.log(
+      "HANDOVER BEFORE SAVE",
+      JSON.stringify(formData, null, 2)
+    );
 
     let id;
 
@@ -209,7 +228,17 @@ export default function HandoverList() {
     setHandoverList(prev => prev.filter(h => h.id !== id));
   };
 
-   if (loading) {
+  const canModifyLead = (item) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = item.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
+  if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
         <div className="text-center">
@@ -248,7 +277,7 @@ export default function HandoverList() {
 
           <div className="mb-3">
             <label className="form-label">Upload Files</label>
-            <MultiUploadWithDelete
+            <UploadPage
               uploadedFiles={formData.fileUpload}
               onFilesChange={(files) =>
                 setFormData(prev => ({ ...prev, fileUpload: files }))
@@ -310,6 +339,7 @@ export default function HandoverList() {
               <tr>
                 <th>Created By</th>
                 <th>Project</th>
+                <th>Files</th>
                 <th>Remarks</th>
                 <th>Staff Assigned</th>
                 <th>Status</th>
@@ -319,74 +349,99 @@ export default function HandoverList() {
             </thead>
 
             <tbody>
-              {handoverList.length ? handoverList.map(item => (
-                <tr key={item.id}>
-                  <td>{item.createdBy?.name || "--"}</td>
-                  <td>{item.projectName}</td>
-                  <td>
-                {item.fileUpload.length ? (
-                  <ul style={{ paddingLeft: 16 }}>
-                    {item.fileUpload.map(f => (
-                      <li key={f.fileId}>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#1976d2",
-                            cursor: "pointer",
-                            textDecoration: "underline"
-                          }}
-                          onClick={async () => {
-                            const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                            const token = tokens?.access_token;
+              {handoverList.length ? handoverList.map(item => {
+                const allowed = canModifyLead(item);
+                return (
+                  <tr key={item.id}>
+                    <td>{item.createdBy?.name || "--"}</td>
+                    <td>{item.projectName}</td>
+                    <td>
+                      {item.fileUpload.length ? (
+                        <ul style={{ paddingLeft: 16 }}>
+                          {item.fileUpload.map(f => (
+                            <li key={f.fileId}>
+                              <button
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#1976d2",
+                                  cursor: "pointer",
+                                  textDecoration: "underline"
+                                }}
+                                // onClick={async () => {
+                                //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+                                //   const token = tokens?.access_token;
 
-                            if (!token) {
-                              alert("You must login first");
-                              return;
-                            }
+                                //   if (!token) {
+                                //     alert("You must login first");
+                                //     return;
+                                //   }
 
-                            const result = await window.electron.downloadFile(f.fileId, token, f.name)
+                                //   const result = await window.electron.downloadFile(f.fileId, token, f.name)
 
-                            if (!result?.success) {
-                              alert("Download failed");
-                            }
-                          }}
-                        >
-                          ⬇ {f.name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : "--"}
-              </td>
-                  <td>{item.remarks || "--"}</td>
-                  <td>
-                    {(item.staffAssigned || [])
-                      .map(uid => staffNameMap[uid] || uid)
-                      .join(", ")}
-                  </td>
-                  <td>{item.completionStatus}</td>
-                  <td>
-                    {item.createdAt
-                      ? new Date(item.createdAt.seconds * 1000).toLocaleString()
-                      : "--"}
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-warning me-2"
-                      onClick={() => handleEdit(item)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleDelete(item.id)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              )) : (
+                                //   if (!result?.success) {
+                                //     alert("Download failed");
+                                //   }
+                                // }}
+                                onClick={async () => {
+                                  const result = await window.electron.downloadFile(
+                                    f.fileId,
+                                    null,
+                                    f.name
+                                  );
+
+                                  if (!result?.success) {
+                                    alert("Download failed");
+                                  }
+                                }}
+                              >
+                                ⬇ {f.name}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : "--"}
+                    </td>
+                    <td>{item.remarks || "--"}</td>
+                    <td>
+                      {(item.staffAssigned || [])
+                        .map(uid => staffNameMap[uid] || uid)
+                        .join(", ")}
+                    </td>
+                    <td>{item.completionStatus}</td>
+                    <td>
+                      {item.createdAt
+                        ? new Date(item.createdAt.seconds * 1000).toLocaleString()
+                        : "--"}
+                    </td>
+                    <td>
+                      <button
+                        className="btn-edit"
+                        onClick={() => allowed && handleEdit(item)}
+                        disabled={!allowed}
+                        style={{
+                          opacity: allowed ? 1 : 0.5,
+                          cursor: allowed ? "pointer" : "not-allowed"
+                        }}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        className="btn-delete"
+                        onClick={() => allowed && handleDelete(item.id)}
+                        disabled={!allowed}
+                        style={{
+                          opacity: allowed ? 1 : 0.5,
+                          cursor: allowed ? "pointer" : "not-allowed"
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }) : (
                 <tr>
                   <td colSpan="7" className="text-center">
                     No handover records yet.
@@ -400,4 +455,4 @@ export default function HandoverList() {
       </div>
     </div>
   );
-}
+} 

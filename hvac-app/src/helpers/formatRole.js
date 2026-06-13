@@ -1,3 +1,4 @@
+// src/helpers/formatRole.js
 export const formatRole = (role) => {
   if (!role) return "";
 

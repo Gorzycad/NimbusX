@@ -1,3 +1,4 @@
+// src/firebase/staffService.js
 import { db } from "../firebase/firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 

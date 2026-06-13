@@ -1,3 +1,4 @@
+// src/pages/chat/AdminAnnouncements.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import {
   collection,
@@ -61,7 +62,9 @@ export default function AdminAnnouncements() {
     return map;
   }, [staffList]);
 
-  const canPost = role === "company_admin";
+  const normalizedRole = role?.toLowerCase().replace(/\s+/g, "_");
+  const canPost = normalizedRole === "company_admin";
+  //const canPost = role === "company_admin";
   console.log("Role:", role, "Can post:", canPost);
 
   /* -------------------------------------------------- */

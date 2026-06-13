@@ -1,3 +1,4 @@
+// hvac-backend/generateToken.js
 import { google } from "googleapis";
 
 export default function generateAuthUrl(CONFIG) {

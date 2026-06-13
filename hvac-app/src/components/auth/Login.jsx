@@ -14,7 +14,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { user, authReady } = useAuth();
-
+  const [error, setError] = useState("");
 
   React.useEffect(() => {
     if (authReady && user) {
@@ -27,6 +27,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
 
     try {
@@ -54,9 +55,6 @@ export default function Login() {
 
       const uid = firebaseUser.uid;
 
-
-      // Force refresh the token to get the latest custom claims
-      //await firebaseUser.getIdToken(true);
 
       // 🔄 Auto-create / sync global user profile
       await setDoc(
@@ -94,14 +92,6 @@ export default function Login() {
           return;
         }
       }
-
-      // // ✅ Inspect custom claims
-      // const token = await firebaseUser.getIdTokenResult();
-      // console.log("Custom claims:", token.claims);
-
-      // // Now you can safely use companyId from claims if needed
-      // const companyIdFromClaims = token.claims.companyId;
-      // console.log("Company ID from token:", companyIdFromClaims);
 
       // Only perform Firestore reads AFTER login
       const userRef = doc(db, `users/${uid}`);
@@ -152,8 +142,12 @@ export default function Login() {
     } catch (err) {
       console.error("❌ Login error:", err);
       if (err.code === "auth/wrong-password") {
-        alert("Incorrect password");
+        setError("Incorrect password");
+      } else {
+        //setError(err.message || "Login failed.");
+        setError("Incorrect username/password" || "Login failed.");
       }
+
 
     } finally {
       setLoading(false);
@@ -167,6 +161,13 @@ export default function Login() {
   return (
     <div style={{ maxWidth: 400, margin: "60px auto", padding: 20 }}>
       <h2>Sign In</h2>
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
         <input
           type="email"

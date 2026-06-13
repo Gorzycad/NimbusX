@@ -3,20 +3,39 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { doc, getDoc, collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
-import { Building2, Bell } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Building2, Bell, RefreshCw } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export default function Header() {
-  const { user, displayName, companyId, authReady } = useAuth();
+  const { user, displayName, companyId, authReady, userData } = useAuth();
   const [companyName, setCompanyName] = useState("");
   const [companyLogo, setCompanyLogo] = useState(null);
-
   const navigate = useNavigate();
-  const [logoSrc, setLogoSrc] = useState(null);
+  const location = useLocation();
+  //const [logoSrc, setLogoSrc] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
   // -----------------------------------------------------
   // 🔔 NOTIFICATIONS BADGE LISTENER
   // -----------------------------------------------------
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const logoSrc = companyLogo?.fileId
+  ? `https://lh3.googleusercontent.com/d/${companyLogo.fileId}=w1000`
+  : null;
+  
+  // const logoSrc = companyLogo?.fileId
+  // ? `https://drive.google.com/thumbnail?id=${companyLogo.fileId}&sz=w1000`
+  // : null;
+  
+  // const logoSrc = companyLogo?.fileId
+  // ? `https://drive.google.com/uc?export=view&id=${companyLogo.fileId}`
+  // : null;
+
+  useEffect(() => {
+    console.log("companyLogo changed:", companyLogo);
+    console.log("logoSrc:", logoSrc);
+  }, [companyLogo]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -31,6 +50,8 @@ export default function Header() {
       setCompanyName(data.companyName || data.name || "");
 
       setCompanyLogo(data.companyLogo || null);
+      console.log("Company document:", data);
+      console.log("Company logo:", data.companyLogo);
     });
 
     return () => unsubscribe();
@@ -51,36 +72,67 @@ export default function Header() {
     return () => unsubscribe();
   }, [user, companyId]);
 
-  useEffect(() => {
-    const loadLogo = async () => {
-      if (!companyLogo?.fileId) return;
+  // useEffect(() => {
+  //   const loadLogo = async () => {
+  //     setLogoSrc(null);
 
-      if (!window.electron?.getFileUrl) {
-        console.warn("Electron API not ready");
-        return;
-      }
+  //     if (!companyLogo?.fileId || !companyId) return;
 
-      try {
-        const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-        const accessToken = tokens?.access_token;
+  //     if (!window.electron?.getCompanyLogo) {
+  //       console.warn("IPC not available");
+  //       return;
+  //     }
 
-        if (!accessToken) return;
+  //     try {
+  //       //const result = window.electron.getCompanyLogo(companyLogo.fileId);
+  //       const result = await window.electron.getCompanyLogo(companyLogo.fileId, companyId);
 
-        const result = await window.electron.getFileUrl(
-          companyLogo.fileId,
-          accessToken
-        );
+  //       if (result?.success && result.url) {
+  //         //setLogoSrc(`${result.url}&t=${Date.now()}`);
+  //         setLogoSrc(result.url);
+  //       }
+  //     } catch (err) {
+  //       console.error("Failed to load logo:", err);
+  //     }
+  //   };
 
-        if (result?.success && result.url) {
-          setLogoSrc(result.url);
-        }
-      } catch (err) {
-        console.error("Failed to load logo:", err);
-      }
-    };
+  //   loadLogo();
+  // }, [companyLogo?.fileId, companyId]);
 
-    loadLogo();
-  }, [companyLogo?.fileId]);
+  //   useEffect(() => {
+  //   const loadLogo = async () => {
+  //     if (!companyLogo?.fileId || !companyId) return;
+  //     if (!window.electron?.getCompanyLogo) return;
+
+  //     try {
+  //       setLogoSrc(null);
+
+  //       const result = await window.electron.getCompanyLogo(
+  //         companyLogo.fileId,
+  //         companyId
+  //       );
+
+  //       console.log("LOGO RESULT:", result);
+
+  //       if (result?.success && result.url) {
+  //         setLogoSrc(result.url);
+  //       }
+  //     } catch (err) {
+  //       console.error("Failed to load logo:", err);
+  //     }
+  //   };
+
+  //   loadLogo();
+  // }, [companyLogo?.fileId, companyId]);
+
+  // useEffect(() => {
+  //   if (!companyLogo?.fileId) return;
+
+  //   const url = `https://drive.google.com/uc?export=view&id=${companyLogo.fileId}`;
+  //   setLogoSrc(url);
+  // }, [companyLogo?.fileId]);
+
+  
 
   console.log("electron object:", window.electron);
 
@@ -91,6 +143,22 @@ export default function Header() {
       </header>
     );
   }
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+
+    // small delay so spinner becomes visible
+    setTimeout(() => {
+      navigate(location.pathname, {
+        replace: true,
+        state: { refresh: Date.now() },
+      });
+
+      setRefreshing(false);
+    }, 700);
+  };
+
+  console.log("logoSrc:", logoSrc);
 
   return (
     <header
@@ -124,32 +192,16 @@ export default function Header() {
           <Building2 size={60} />
         )}
 
-        {/* {typeof companyLogoDisplay === "string" ? (
-          <img
-            src={companyLogoDisplay}
-            alt={`${companyName} Logo`}
-            style={{
-              width: "auto",
-              height: 60,
-              objectFit: "contain",
-              borderRadius: 8,
-            }}
-          />
-        ) : (
-          // Render Lucide icon fallback
-          React.createElement(companyLogoDisplay, {
-            size: 60,
-            color: "#000",
-          })
-        )} */}
       </div>
 
       {/* LEFT SIDE — Welcome + Notifications */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
 
         {/* Welcome Text */}
-        <h4 style={{ margin: 0 }}>Welcome, {displayName || user?.displayName || "Loading..."}</h4>
+        <h4 style={{ margin: 0 }}>
 
+          Welcome, {displayName || "Loading..."}
+        </h4>
         {/* 🔔 Notifications Button */}
         <div
           style={{ position: "relative", cursor: "pointer" }}
@@ -174,6 +226,24 @@ export default function Header() {
               {unreadCount}
             </span>
           )}
+        </div>
+
+        {/* 🔄 Refresh Button */}
+        <div
+          style={{
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          title="Refresh Page"
+          onClick={handleRefresh}
+        >
+          <RefreshCw
+            size={22}
+            color="orange"
+            className={refreshing ? "spin-refresh" : ""}
+          />
         </div>
       </div>
 

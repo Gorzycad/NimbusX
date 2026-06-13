@@ -235,8 +235,8 @@ function Notifications() {
                   <small style={{ color: "#666" }}>
                     {n.createdAt?.seconds
                       ? new Date(
-                          n.createdAt.seconds * 1000
-                        ).toLocaleString()
+                        n.createdAt.seconds * 1000
+                      ).toLocaleString()
                       : "Just now"}
                   </small>
                 </div>

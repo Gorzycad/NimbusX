@@ -13,7 +13,6 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../../firebase/firebase";
-//import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useNavigate, Link } from "react-router-dom";
 import { ROLE_ACCESS } from "../../config/roleAccess";
 
@@ -32,10 +31,11 @@ export default function Register() {
   const [companyId, setCompanyId] = useState("");
   const [generatedId, setGeneratedId] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
     firstName: "",
@@ -87,6 +87,7 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
 
     // Validation
     if (!form.firstName || !form.lastName || !form.email || !form.password || !form.role) {
@@ -142,7 +143,6 @@ export default function Register() {
 
       // 3️⃣ Determine companyId
       let finalCompanyId = companyId;
-      // let logoUrl = "";
 
       if (mode === "create") {
         finalCompanyId = await ensureUniqueCompanyId(generatedId);
@@ -156,10 +156,7 @@ export default function Register() {
           createdByEmail: form.email.trim(),
         });
 
-        // companyLogo = {
-        //   fileId,
-        //   name
-        // }
+
 
       } else {
         // Joining existing company
@@ -179,6 +176,16 @@ export default function Register() {
         role: form.role.toLowerCase().replace(/\s+/g, "_"),
         companyId: finalCompanyId,
         createdAt: serverTimestamp(),
+
+        // 🔥 NEW BILLING MODEL
+        employmentStatus: "active",     // active | resigned
+        billingStatus: "pending",       // pending/paid
+        accessEnabled: false,           // 🚫 blocked until paid
+        trialStartDate: serverTimestamp(),
+        subscriptionPhase: "trial",
+        joinedAt: serverTimestamp(),
+        // 🔥 ADD THIS
+        lastBillingReset: serverTimestamp(),
       };
 
 
@@ -197,24 +204,6 @@ export default function Register() {
 
       const token = await userCred.user.getIdToken();
 
-      // await fetch("/set-claims", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //     Authorization: `Bearer ${token}`,
-      //   },
-      //   body: JSON.stringify({
-      //     uid,
-      //     role: profileData.role,
-      //     companyId: finalCompanyId
-      //   }),
-      // });
-
-      // wait a bit before refresh
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-
-      //await userCred.user.getIdToken(true);
 
       // 6️⃣ Send email verification
       await sendEmailVerification(userCred.user);
@@ -233,8 +222,15 @@ export default function Register() {
 
       // ❌ REMOVE auto redirect (this is important)
     } catch (err) {
+
       console.error("Register error:", err);
-      alert("Registration failed: " + (err?.message || err));
+
+      if (err.code === "auth/email-already-in-use") {
+        setError("Email already exists.");
+      } else {
+        //setError(err.message || "Registration failed.");
+        setError("Email already exists" || "Registration failed.");
+      }
     } finally {
       // Only stop loading if NOT successful
       if (!registrationComplete) {
@@ -243,11 +239,93 @@ export default function Register() {
     }
   };
 
-  if (loading) return;
+  const saveGoogleRefreshToken = async (refreshToken) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("No authenticated user");
+
+    // 🔥 Get user profile (source of truth)
+    const userSnap = await getDoc(doc(db, "users", uid));
+    const userData = userSnap.data();
+
+    const companyId = userData?.companyId;
+
+    if (!companyId) {
+      throw new Error("User has no companyId");
+    }
+
+    const data = {
+      googleRefreshToken: refreshToken,
+    };
+
+    await setDoc(doc(db, "users", uid), data, { merge: true });
+
+    await setDoc(
+      doc(db, "companies", companyId, "users", uid),
+      data,
+      { merge: true }
+    );
+  };
+
+  const connectGoogleDrive = async () => {
+    try {
+      const client = window.google.accounts.oauth2.initCodeClient({
+        client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+        scope: "https://www.googleapis.com/auth/drive",
+        ux_mode: "popup",
+
+        callback: async (response) => {
+          try {
+            const code = response.code;
+
+            const res = await fetch("/api/google/exchange-code", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code }),
+            });
+
+            const data = await res.json();
+
+            if (!data.refreshToken) {
+              throw new Error("No refresh token returned");
+            }
+
+            // ✅ STEP 5 GOES HERE (IMPORTANT)
+            await saveGoogleRefreshToken(data.refreshToken);
+
+            alert("Google Drive connected successfully!");
+          } catch (err) {
+            console.error(err);
+            alert("Failed to connect Google Drive");
+          }
+        },
+      });
+
+      client.requestCode();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
+        <div className="text-center">
+          <div className="spinner-border text-primary" />
+          <div className="mt-2">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 720, margin: "20px auto", padding: 20 }}>
       <h2>Create Account</h2>
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
 
       <div style={{ marginBottom: 16 }}>
         <label>
@@ -419,6 +497,14 @@ export default function Register() {
             : mode === "create"
               ? "Create company & account"
               : "Join company & create account"}
+        </button>
+
+        <button
+          type="button"
+          onClick={connectGoogleDrive}
+          style={{ marginTop: 10 }}
+        >
+          Connect Google Drive
         </button>
 
         <div style={{ marginTop: 10 }}>

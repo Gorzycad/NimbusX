@@ -1,10 +1,9 @@
 // electron/preload.js
-//import { contextBridge, ipcRenderer } from "electron";
 const { contextBridge, ipcRenderer } = require("electron");
 
 // Expose safe APIs to renderer (React)
 contextBridge.exposeInMainWorld("api", {
-  
+
   // Example: send message to main process
   send: (channel, data) => {
     ipcRenderer.send(channel, data);
@@ -18,18 +17,21 @@ contextBridge.exposeInMainWorld("api", {
 });
 
 contextBridge.exposeInMainWorld("electron", {
+  invoke: (channel, data) => ipcRenderer.invoke(channel, data),
+
+  send: (channel, data) => ipcRenderer.send(channel, data),
   openExternal: (url) => ipcRenderer.send("open-external", url),
-  
+
   downloadFile: (fileId, token, fileName) =>
-  ipcRenderer.invoke("download-file", { fileId, token, fileName }),
+    ipcRenderer.invoke("download-file", { fileId, token, fileName }),
 
   onOAuthSuccess: (callback) => {
     ipcRenderer.removeAllListeners("oauth-success");
     ipcRenderer.on("oauth-success", (event, tokens) => callback(tokens));
   },
 
-  getFileUrl: (fileId, accessToken) =>
-    ipcRenderer.invoke("get-file-url", { fileId, accessToken }),
+  getCompanyLogo: (fileId, companyId) =>
+    ipcRenderer.invoke("get-company-logo", { fileId, companyId }),
 });
 
 contextBridge.exposeInMainWorld("appInfo", {

@@ -1,6 +1,5 @@
-// backend/server.js
+// hvac-backend/server.js
 import admin from "firebase-admin";
-//import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
 const serviceAccount = JSON.parse(
   fs.readFileSync(new URL("./serviceAccountKey.json", import.meta.url))
 );
@@ -18,7 +17,7 @@ import passport from "passport";
 
 // Import routes
 import authRoutes from "./routes/auth.js";
-import uploadRoutes from "./routes/upload.js";
+import uploadRoute from "./routes/upload.js";
 import downloadRoutes from "./routes/download.js";
 import createOAuthClient from "./google/oauthClient.js";
 import generateAuthUrl from "./generateToken.js";
@@ -53,6 +52,8 @@ export function startServer(CONFIG) {
     })
   );
 
+
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
@@ -65,14 +66,13 @@ export function startServer(CONFIG) {
   // =====================
   // Google OAuth
   // =====================
-  //const { oauth2Client, SCOPES } = oauthRoutes(CONFIG);
   const { oauth2Client, SCOPES } = createOAuthClient(CONFIG);
   // =====================
   // Other routes
   // =====================
   app.use("/auth", authRoutes(CONFIG));
-  app.use("/upload", uploadRoutes);
   app.use("/download", downloadRoutes(CONFIG));
+  app.use("/upload", uploadRoute(CONFIG));
 
   // =====================
   // Google Sheets

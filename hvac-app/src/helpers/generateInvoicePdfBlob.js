@@ -1,7 +1,13 @@
+// //src/helpers/generateInvoicePdfBlob.js
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export function generateInvoicePdfBlob({ po, boq }) {
+export function generateInvoicePdfBlob({
+  po,
+  boq,
+  mtoOverride = [],
+  deliveryFee = 0,
+}) {
   const doc = new jsPDF();
 
   doc.setFontSize(16);
@@ -12,32 +18,51 @@ export function generateInvoicePdfBlob({ po, boq }) {
   doc.text(`Project: ${po.projectName}`, 14, 34);
   doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 40);
 
-  let y = 50;
-  let grandTotal = 0;
+  let y = 65;
+  let subtotal = 0;
 
-  const renderSection = (title, rows) => {
-    if (!rows?.length) return 0;
+  doc.setFontSize(11);
+
+  doc.text(
+    `Recipient Address: ${po.recipientAddress || "-"}`,
+    14,
+    45
+  );
+
+  doc.text(
+    `Recipient Phone: ${po.recipientPhone || "-"}`,
+    14,
+    52
+  );
+
+  const renderSection = (title, items = []) => {
+    const validItems = items.filter(
+      (r) => Number(r.qty || 0) > 0
+    );
+
+    if (!validItems.length) return;
 
     doc.setFontSize(12);
     doc.text(title.toUpperCase(), 14, y);
     y += 5;
 
-    let sectionTotal = 0;
+    const body = validItems
+      .filter((r) => Number(r.qty || 0) > 0)
+      .map((r) => {
+        const qty = Number(r.qty || 0);
+        const rate = Number(r.rate || 0);
+        const total = qty * rate;
 
-    const body = rows.map((r) => {
-      const qty = Number(r.qty) || 0;
-      const rate = Number(r.rate) || 0;
-      const total = qty * rate;
-      sectionTotal += total;
+        subtotal += total;
 
-      return [
-        r.item,
-        qty,
-        r.unit,
-        rate.toFixed(2),
-        total.toFixed(2),
-      ];
-    });
+        return [
+          r.item || r.description || "",
+          qty,
+          r.unit || "",
+          rate.toFixed(2),
+          total.toFixed(2),
+        ];
+      });
 
     autoTable(doc, {
       startY: y,
@@ -47,33 +72,52 @@ export function generateInvoicePdfBlob({ po, boq }) {
       styles: { fontSize: 9 },
     });
 
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY,
-      body: [[
-        { content: "SECTION TOTAL", colSpan: 4, styles: { halign: "right", fontStyle: "bold" } },
-        { content: sectionTotal.toFixed(2), styles: { halign: "right", fontStyle: "bold" } },
-      ]],
-      theme: "grid",
-    });
-
     y = doc.lastAutoTable.finalY + 10;
-    return sectionTotal;
   };
 
-  grandTotal += renderSection("Mechanical", boq.mechanical);
-  grandTotal += renderSection("Electrical", boq.electrical);
-  grandTotal += renderSection("Plumbing", boq.plumbing);
+  // ✅ MAIN LOGIC
+  if (mtoOverride?.length) {
+    renderSection("MTO ITEMS", mtoOverride);
+  } else {
+    renderSection("Mechanical", boq?.mechanical);
+    renderSection("Electrical", boq?.electrical);
+    renderSection("Plumbing", boq?.plumbing);
+  }
+
+  const grandTotal = subtotal + Number(deliveryFee || 0);
 
   autoTable(doc, {
     startY: y,
-    body: [[
-      { content: "TOTAL AMOUNT PAYABLE", styles: { fontStyle: "bold" } },
-      { content: grandTotal.toFixed(2), styles: { halign: "right", fontStyle: "bold" } },
-    ]],
-    theme: "grid",
+    body: [
+      [
+        { content: "SUBTOTAL", styles: { fontStyle: "bold" } },
+        { content: subtotal.toFixed(2), styles: { halign: "right" } },
+      ],
+    ],
   });
 
-  // 🔑 RETURN BLOB INSTEAD OF SAVING
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY,
+    body: [
+      [
+        { content: "DELIVERY FEE", styles: { fontStyle: "bold" } },
+        { content: Number(deliveryFee).toFixed(2), styles: { halign: "right" } },
+      ],
+    ],
+  });
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY,
+    body: [
+      [
+        { content: "TOTAL PAYABLE", styles: { fontStyle: "bold" } },
+        {
+          content: grandTotal.toFixed(2),
+          styles: { halign: "right", fontStyle: "bold" },
+        },
+      ],
+    ],
+  });
+
   return doc.output("blob");
 }
-

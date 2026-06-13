@@ -1,8 +1,9 @@
 // src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, getAuth, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
+import { getUserPermissions } from "../config/roleAccess";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -16,6 +17,184 @@ export function AuthProvider({ children }) {
   const [authReady, setAuthReady] = useState(false);
   const [companyLogo, setCompanyLogo] = useState(null);
   const [companyName, setCompanyName] = useState("");
+  //const isBlocked = userData && !userData.accessEnabled;
+  const unsubscribeUserRef = useRef(null);
+  const unsubscribeCompanyRef = useRef(null);
+  const lastCompanyIdRef = useRef(null);
+  const [permissions, setPermissions] = useState([]);
+
+
+  const isBlocked = userData?.accessEnabled === false;
+
+  //BLOCK NEW USERS AFTER 7 DAYS
+  useEffect(() => {
+
+    if (!userData?.trialStartDate?.toDate) return;
+
+    // already blocked
+    if (userData.accessEnabled === false) return;
+
+    // already paid
+    if (userData.subscriptionPhase !== "trial") return;
+
+    const startDate = userData.trialStartDate.toDate();
+
+    const now = new Date();
+
+    const diffDays =
+      (now - startDate) / (1000 * 60 * 60 * 24);
+
+    if (diffDays >= 7) {
+
+      const disableAccess = async () => {
+
+        try {
+
+          await updateDoc(
+            doc(db, "users", currentUser.uid),
+            {
+              accessEnabled: false,
+            }
+          );
+
+          await updateDoc(
+            doc(
+              db,
+              "companies",
+              companyId,
+              "users",
+              currentUser.uid
+            ),
+            {
+              accessEnabled: false,
+            }
+          );
+
+        } catch (err) {
+          console.error("Subscription block error:", err);
+        }
+      };
+
+      disableAccess();
+    }
+
+  }, [userData, currentUser, companyId]);
+
+
+  //BLOCK EXISTING USERS AFTER 5DAYS
+  useEffect(() => {
+
+    if (!userData) return;
+
+    // ONLY ACTIVE SUBSCRIBERS
+    if (userData.subscriptionPhase !== "active") return;
+
+    // paid users always allowed
+    if (userData.billingStatus === "paid") return;
+
+    const today = new Date();
+
+    const currentDay = today.getDate();
+
+    // allow first 5 days
+    if (currentDay <= 5) return;
+
+    // already blocked
+    if (userData.accessEnabled === false) return;
+
+    const blockUser = async () => {
+
+      try {
+
+        await updateDoc(
+          doc(db, "users", currentUser.uid),
+          {
+            accessEnabled: false,
+          }
+        );
+
+        if (companyId) {
+
+          await updateDoc(
+            doc(
+              db,
+              "companies",
+              companyId,
+              "users",
+              currentUser.uid
+            ),
+            {
+              accessEnabled: false,
+            }
+          );
+        }
+
+      } catch (err) {
+
+        console.error("Monthly subscription block error:", err);
+
+      }
+    };
+
+    blockUser();
+
+  }, [userData, currentUser, companyId]);
+
+  // EMAIL VERIFICATION POLLING
+  useEffect(() => {
+
+    if (!currentUser) return;
+
+    if (currentUser.emailVerified) return;
+
+    console.log("⏳ Waiting for email verification...");
+
+    let cancelled = false;
+    let timeoutId;
+
+    const checkVerification = async () => {
+
+      if (cancelled) return;
+
+      try {
+
+        await currentUser.reload();
+
+        // refresh current auth user
+        const refreshedUser = auth.currentUser;
+
+        if (!refreshedUser) return;
+
+        if (refreshedUser.emailVerified) {
+
+          console.log("✅ Email verified detected");
+
+          window.location.href = "/login";
+
+          return;
+        }
+
+        timeoutId = setTimeout(checkVerification, 10000);
+
+      } catch (err) {
+
+        console.error("Email verification check failed:", err);
+
+      }
+    };
+
+    timeoutId = setTimeout(checkVerification, 10000);
+
+    return () => {
+
+      cancelled = true;
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+
+  }, [currentUser]);
 
   useEffect(() => {
     const cachedName = localStorage.getItem("companyName");
@@ -46,6 +225,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (unsubscribeUserRef.current) unsubscribeUserRef.current();
+      if (unsubscribeCompanyRef.current) unsubscribeCompanyRef.current();
 
       console.log("🔥 Firebase auth state changed:", firebaseUser);
       setAuthReady(false);
@@ -58,129 +239,88 @@ export function AuthProvider({ children }) {
         setCompanyId(null);
         setDisplayName("");
         setAuthReady(true);
+        lastCompanyIdRef.current = null; // ✅ ADD THIS
         return;
       }
 
       setCurrentUser(firebaseUser);
 
-      // 🔁 Auto-refresh email verification status
-      if (firebaseUser && !firebaseUser.emailVerified) {
-        console.log("⏳ Waiting for email verification...");
-
-        const interval = setInterval(async () => {
-          await firebaseUser.reload(); // 🔥 VERY IMPORTANT
-
-          if (firebaseUser.emailVerified) {
-            console.log("✅ Email verified detected!");
-
-            clearInterval(interval);
-
-            // Force token refresh so claims + auth update
-            await firebaseUser.getIdToken(true);
-
-            // 🔄 Trigger full auth reload
-            window.location.href = "/login";
-          }
-        }, 3000); // check every 3 seconds
-
-        setAuthReady(true);
-        return;
-      }
-
       const normalizeRole = (role) =>
         role?.toLowerCase().replace(/\s+/g, "_");
       try {
         // Force refresh to include latest custom claims
-        await firebaseUser.getIdToken(true);
+        if (!firebaseUser.emailVerified) {
+          await firebaseUser.getIdToken(true);
+        }
 
         // Optional: keep for debugging only
         const tokenResult = await firebaseUser.getIdTokenResult();
         console.log("🔥 Custom claims (debug only):", tokenResult.claims);
+
         const uid = firebaseUser.uid;
-
-        // Fetch user data from top-level /users collection
         const userRef = doc(db, "users", uid);
-        const userSnap = await getDoc(userRef);
-        console.log("📄 userSnap:", userSnap.exists(), userSnap.data());
 
-        if (!userSnap.exists()) {
-          console.warn("⏳ User doc not ready yet... waiting");
+        // 🔥 REAL-TIME LISTENER (THIS FIXES YOUR ISSUE)
+        unsubscribeUserRef.current = onSnapshot(userRef, async (userSnap) => {
+          if (!userSnap.exists()) {
+            console.warn("⏳ User doc not ready yet... waiting");
 
-          setAuthReady(true);
-          return;
-        }
-
-        // if (!userSnap.exists()) {
-        //   console.warn("⏳ User doc not ready yet, retrying...");
-
-        //   setTimeout(() => {
-        //     window.location.reload();
-        //   }, 1000);
-
-        //   return;
-        // }
-
-        const data = userSnap.data();
-
-        setUserData(data);
-
-
-        const normalizedRole = normalizeRole(data.role);
-
-        setRole(normalizedRole || "guest");
-        setCompanyId(data.companyId);
-        setDisplayName(`${data.firstName || ""} ${data.lastName || ""}`.trim());
-
-
-        // Cache locally
-        localStorage.setItem("user", JSON.stringify(data));
-        localStorage.setItem("role", data.role?.toLowerCase() || "guest");
-        localStorage.setItem("companyId", data.companyId);
-        localStorage.setItem("companyLogo", data.companyLogoUrl || "");
-
-        if (data?.companyId) {
-          if (role !== "company_admin") {
-            return <p>Only admin can upload logo</p>;
+            //setAuthReady(true);
+            return;
           }
-          const companyRef = doc(db, "companies", data.companyId);
 
-          onSnapshot(companyRef, (snap) => {
-            if (snap.exists()) {
-              const companyData = snap.data();
+          const data = userSnap.data();
 
-              setCompanyName(companyData.companyName || "");
-              setCompanyLogo(companyData.companyLogo || null);
+          setUserData(data);
+          const normalizedRole = normalizeRole(data.role);
 
-              localStorage.setItem("companyLogo", JSON.stringify(companyData.companyLogo || null));
-              localStorage.setItem("companyName", companyData.companyName || "");
-            }
-          });
-        }
-        // Optional: mark attendance
-        const today = new Date();
-        const day = today.getDate().toString();
-        const monthId = `${today.getFullYear()}-${(today.getMonth() + 1)
-          .toString()
-          .padStart(2, "0")}`;
+          setRole(normalizedRole || "guest");
+          setCompanyId(data.companyId);
 
-        if (data.companyId) {
-          const attRef = doc(
-            db,
-            "companies",
-            data.companyId,
-            "attendance",
-            monthId,
-            "staff",
-            uid
+          // 🔥 THIS WILL NOW UPDATE HEADER INSTANTLY
+          setDisplayName(
+            `${data.firstName || ""} ${data.lastName || ""}`.trim()
           );
-          try {
-            if (data.companyId && ["company_admin", "developer"].includes(normalizedRole)) {
-              await setDoc(attRef, { [day]: true }, { merge: true });
+
+          const resolvedPermissions = getUserPermissions(
+            normalizedRole,
+            data.customPermissions || {}
+          );
+
+          setPermissions(resolvedPermissions);
+
+
+          // Cache locally
+          localStorage.setItem("user", JSON.stringify(data));
+          localStorage.setItem("role", data.role?.toLowerCase() || "guest");
+          localStorage.setItem("companyId", data.companyId);
+          localStorage.setItem("companyLogo", data.companyLogoUrl || "");
+
+
+          // 🔥 COMPANY LISTENER
+          if (data?.companyId && lastCompanyIdRef.current !== data.companyId) {
+            lastCompanyIdRef.current = data.companyId;
+
+            if (unsubscribeCompanyRef.current) {
+              unsubscribeCompanyRef.current();
             }
-          } catch (e) {
-            console.warn("⚠️ Attendance write failed:", e.message);
+            const companyRef = doc(db, "companies", data.companyId);
+
+            unsubscribeCompanyRef.current = onSnapshot(companyRef, (snap) => {
+              if (snap.exists()) {
+                const companyData = snap.data();
+
+                setCompanyName(companyData.companyName || "");
+                setCompanyLogo(companyData.companyLogo || null);
+
+                localStorage.setItem("companyLogo", JSON.stringify(companyData.companyLogo || null));
+                localStorage.setItem("companyName", companyData.companyName || "");
+              }
+            });
           }
-        }
+
+
+        });
 
       } catch (err) {
         console.error("❌ Error loading Firestore user:", err);
@@ -188,23 +328,28 @@ export function AuthProvider({ children }) {
         setUserData(null);
         setCompanyId(null);
 
-        // // fallback to claims instead of killing role
-        // try {
-        //   const tokenResult = await firebaseUser.getIdTokenResult();
-        //   const claimRole = tokenResult.claims.role;
 
-        //   setRole(claimRole || "guest");
-        //   setCompanyId(tokenResult.claims.companyId || null);
-        // } catch {
-        //   setRole("guest");
-        // }
       }
       finally {
         setAuthReady(true);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+
+      unsubscribe && unsubscribe();
+
+      if (unsubscribeUserRef.current) {
+        unsubscribeUserRef.current();
+      }
+
+      if (unsubscribeCompanyRef.current) {
+        unsubscribeCompanyRef.current();
+      }
+
+
+
+    };
   }, []);
 
   useEffect(() => {
@@ -241,11 +386,13 @@ export function AuthProvider({ children }) {
     user: currentUser,
     userData,
     role,
+    permissions,
     displayName,
     companyId,
     companyLogo, //ADD this
     companyName,
     authReady,
+    isBlocked,
     logout,
   };
 

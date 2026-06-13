@@ -1,135 +1,214 @@
 //LeadsFileUpload.jsx
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db, auth } from "../../firebase/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
-function UploadPage({ uploadedFiles = [], onFilesChange })  {
+function UploadPage({ uploadedFiles = [], onFilesChange }) {
   const [file, setFile] = useState(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState(false);
   const [publicDownloadLink, setPublicDownloadLink] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // ✅ 1. Check login state from localStorage first
-  useEffect(() => {
-    const storedLogin = localStorage.getItem("googleLoggedIn") === "true";
+  const saveGoogleRefreshToken = async (refreshToken) => {
+    try {
+      const uid = auth.currentUser?.uid;
+      console.log("CURRENT UID:", uid);
+      if (!uid) {
+        console.error("No authenticated user");
+        return;
+      }
 
-    if (storedLogin) {
-      setIsLoggedIn(true);
+      console.log("💾 Saving refresh token to Firestore...");
+
+      await setDoc(
+        doc(db, "users", uid),
+        {
+          googleRefreshToken: refreshToken,
+        },
+        { merge: true }
+      );
+
+      console.log("✅ Refresh token saved to Firestore");
+    } catch (err) {
+      console.error("SAVE TOKEN ERROR:", err);
     }
+  };
 
-    // Also verify with backend
-    axios
-      .get("http://localhost:4000/auth/status", { withCredentials: true })
-      .then((res) => {
-        if (res.data.authenticated) {
-          setIsLoggedIn(true);
-          localStorage.setItem("googleLoggedIn", "true");
 
-          if (res.data.tokens) {
-            localStorage.setItem(
-              "googleTokens",
-              JSON.stringify(res.data.tokens)
-            );
-          }
-        }
-      })
-      .catch(() => {
-        setIsLoggedIn(false);
-      });
+  // ✅ 1
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("🔐 Auth state changed:", user?.uid);
+
+      if (!user) {
+        console.log("❌ No user logged in");
+        setGoogleConnected(false);
+        console.log("RENDER googleConnected =", googleConnected);
+        return;
+      }
+
+      const snap = await getDoc(doc(db, "users", user.uid));
+      const data = snap.data();
+
+      console.log("📦 Firestore user data:", data);
+
+      if (data?.googleRefreshToken) {
+        console.log("✅ Google Drive CONNECTED for user:", user.uid);
+        setGoogleConnected(true);
+      } else {
+        console.log("⚠️ Google Drive NOT connected");
+        setGoogleConnected(false);
+      }
+    });
+    console.log("RENDER googleConnected =", googleConnected);
+    return () => unsubscribe();
   }, []);
 
   // ✅ 2. Listen for OAuth success event from Electron
-  // ✅ 2. Listen for OAuth success event from Electron
-useEffect(() => {
-  if (window.electron && window.electron.onOAuthSuccess) {
-    // Receive tokens directly from Electron
-    window.electron.onOAuthSuccess((tokens) => {
-      console.log("⚡ OAuth success received", tokens);
+  useEffect(() => {
+    if (window.electron && window.electron.onOAuthSuccess) {
+      // Receive tokens directly from Electron
+      window.electron.onOAuthSuccess(async (tokens) => {
+        try {
+          console.log("AUTH USER:", auth.currentUser);
+          console.log("⚡ OAuth success received", tokens);
+          console.log("🔐 Tokens:", tokens);
 
-      if (tokens) {
-        // Store tokens locally for future requests
-        localStorage.setItem("googleTokens", JSON.stringify(tokens));
-        localStorage.setItem("googleLoggedIn", "true");
+          setError("");
+          setSuccess("Google Drive connected successfully");
 
-        // Unlock the UI immediately
-        setIsLoggedIn(true);
-      } else {
-        console.warn("⚠️ OAuth tokens are undefined!");
-      }
-    });
-  }
-}, []);
+          if (tokens?.refreshToken) {
+            await saveGoogleRefreshToken(tokens.refreshToken);
+            console.log("💾 Storing Google tokens locally");
+            // Store tokens locally for future requests
+            localStorage.setItem("googleTokens", JSON.stringify(tokens));
+            setGoogleConnected(true);
+            // Unlock the UI immediately
+            console.log("🚀 Google OAuth flow completed successfully");
+          }
+        } catch (e) {
+          setError("Google authentication failed");
+        }
+      });
+    }
+  }, []);
 
-  
+  useEffect(() => {
+    console.log(
+      googleConnected
+        ? "🟢 UI STATE: Google Drive CONNECTED → showing upload UI"
+        : "🔴 UI STATE: Google Drive NOT connected → showing connect button"
+    );
+  }, [googleConnected]);
+
+
+
   const uploadFile = async () => {
-  if (!file) return alert("Please select a file first");
+    if (!file) {
+      setError("Please select a file first");
+      return;
+    }
 
-  const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-console.log("TOKENS:", tokens);
+    setError("");
+    setSuccess("");
+    setLoading(true);
 
-const token = tokens?.access_token;
-console.log("ACCESS TOKEN:", token);
+    const uid = auth.currentUser?.uid;
 
-  const formData = new FormData();
-  formData.append("file", file);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("uid", uid);
 
-  try {
-    const res = await axios.post("http://localhost:4000/upload", formData, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    try {
+      const res = await axios.post(
+        "http://localhost:4000/upload",
+        formData
+      );
 
-    const newFile = {
-  fileId: res.data.fileId,
-  name: res.data.fileName,
-  url: res.data.downloadLink
-};
+      const newFile = {
+        fileId: res.data.fileId,
+        name: res.data.fileName,
+        url: res.data.downloadLink,
+      };
 
-setUploadedFileId(res.data.fileId);
-setUploadedFileName(res.data.fileName);
-setPublicDownloadLink(res.data.downloadLink);
+      setUploadedFileId(res.data.fileId);
+      setUploadedFileName(res.data.fileName);
+      setPublicDownloadLink(res.data.downloadLink);
 
-// send file to parent
-if (onFilesChange) {
-  onFilesChange([...uploadedFiles, newFile]);
-}
+      if (onFilesChange) {
+        onFilesChange([...uploadedFiles, newFile]);
+      }
 
-    alert(`Uploaded: ${res.data.fileName}`);
-  } catch (err) {
-    console.error("Upload error:", err);
-    alert("Upload failed");
-  }
-};
-  
+      setSuccess(`Uploaded: ${res.data.fileName}`);
+    }
+    //catch (err) {
+    //   console.error("Upload error:", err);
+    //   alert("Upload failed");
+    // }
+    catch (err) {
+      console.error("Upload error:", err);
+
+      console.log(
+        "SERVER RESPONSE:",
+        err.response?.data
+      );
+      setError(
+        err.response?.data?.message ||
+        "Upload failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const downloadFile = async (fileId, fileName) => {
-  const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-  const token = tokens?.access_token;
+    try {
+      const result = await window.electron.downloadFile(fileId, null, fileName);
 
-  if (!token) {
-    alert("You must login first");
-    return;
-  }
+      if (result?.success) {
+        alert("File downloaded successfully");
+      } else {
+        alert("Download failed");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-  const result = await window.electron.downloadFile(fileId, token,fileName);
-
-  if (result?.success) {
-    alert("File downloaded successfully");
-  } else {
-    alert("Download failed");
-  }
-};
   return (
     <div>
       <h2>Upload a File</h2>
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
 
-      {!isLoggedIn && (
+      {success && (
+        <div className="alert alert-success">
+          {success}
+        </div>
+      )}
+
+      {loading && (
+        <div className="alert alert-info">
+          Uploading file...
+        </div>
+      )}
+
+      {!googleConnected && (
         <button onClick={() => window.api.send("open-google-login")}>
-          Sign in with Google
+          Connect Google Drive
         </button>
       )}
 
-      {isLoggedIn && (
+      {googleConnected && (
         <>
           <input
             type="file"
@@ -140,13 +219,13 @@ if (onFilesChange) {
             Upload
           </button>
 
-                 {uploadedFileId && (
-  <div style={{ marginTop: "15px" }}>
-    <button onClick={() => downloadFile(uploadedFileId, uploadedFileName)}>
-      Download File
-    </button>
-  </div>
-)}
+          {uploadedFileId && (
+            <div style={{ marginTop: "15px" }}>
+              <button onClick={() => downloadFile(uploadedFileId, uploadedFileName)}>
+                Download File
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

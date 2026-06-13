@@ -12,7 +12,6 @@ import {
 import { getLeads } from "../../firebase/leadsService";
 import { updateTenderAwardStatus } from "../../firebase/tenderService";
 
-import MultiUploadWithDelete from "../leads/LeadsFileUpload";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
 
@@ -21,16 +20,28 @@ import { useCallback } from "react";
 
 import { db } from "../../firebase/firebase";
 import { collection, getDocs } from "firebase/firestore";
+import UploadPage from "../leads/LeadsFileUpload";
 
-function cleanData(data) {
-  return Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
+function deepClean(obj) {
+  if (Array.isArray(obj)) {
+    return obj
+      .map(deepClean)
+      .filter(v => v !== undefined);
+  }
+
+  if (obj && typeof obj === "object") {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== undefined)
+        .map(([k, v]) => [k, deepClean(v)])
+    );
+  }
+
+  return obj;
 }
 
 export default function AwardPage() {
-  const { companyId, user } = useAuth();
-
+  const { companyId, user, role, displayName } = useAuth();
   const [awards, setAwards] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -116,10 +127,10 @@ export default function AwardPage() {
 
     const creatorName = staffNameMap[user.uid] || "Unknown User";
 
-    const cleaned = {
-      ...cleanData(formData),
+    const cleaned = deepClean({
+      ...formData,
       staffAssigned: formData.staffAssigned,
-    };
+    });
 
     if (!editingId) {
       cleaned.createdBy = {
@@ -135,6 +146,10 @@ export default function AwardPage() {
       awardId = editingId;
       setEditingId(null);
     } else {
+      console.log(
+        "AWARD BEFORE SAVE",
+        JSON.stringify(cleaned, null, 2)
+      );
       const docRef = await addAward(companyId, cleaned);
       awardId = docRef.id;
     }
@@ -192,7 +207,17 @@ export default function AwardPage() {
     await deleteAward(companyId, id);
     setAwards(prev => prev.filter(a => a.id !== id));
   };
-  
+
+  const canModifyLead = (a) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = a.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
   if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
@@ -225,7 +250,7 @@ export default function AwardPage() {
         </select>
 
         <label>Upload Files</label>
-        <MultiUploadWithDelete
+        <UploadPage
           uploadedFiles={formData.fileUpload}
           onFilesChange={handleFilesChange}
         />
@@ -258,62 +283,97 @@ export default function AwardPage() {
           </tr>
         </thead>
         <tbody>
-          {awards.length ? awards.map(a => (
-            <tr key={a.id}>
-              <td>{a.createdBy?.name || "--"}</td>
-              <td>{a.projectName}</td>
-              <td>
-                {a.fileUpload.length ? (
-                  <ul style={{ paddingLeft: 16 }}>
-                    {a.fileUpload.map(f => (
-                      <li key={f.fileId}>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#1976d2",
-                            cursor: "pointer",
-                            textDecoration: "underline"
-                          }}
-                          onClick={async () => {
-                            const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                            const token = tokens?.access_token;
+          {awards.length ? awards.map(a => {
+            const allowed = canModifyLead(a);
+            return (
+              <tr key={a.id}>
+                <td>{a.createdBy?.name || "--"}</td>
+                <td>{a.projectName}</td>
+                <td>
+                  {a.fileUpload.length ? (
+                    <ul style={{ paddingLeft: 16 }}>
+                      {a.fileUpload.map(f => (
+                        <li key={f.fileId}>
+                          <button
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#1976d2",
+                              cursor: "pointer",
+                              textDecoration: "underline"
+                            }}
+                            // onClick={async () => {
+                            //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+                            //   const token = tokens?.access_token;
 
-                            if (!token) {
-                              alert("You must login first");
-                              return;
-                            }
+                            //   if (!token) {
+                            //     alert("You must login first");
+                            //     return;
+                            //   }
 
-                            const result = await window.electron.downloadFile(f.fileId, token, f.name)
+                            //   const result = await window.electron.downloadFile(f.fileId, token, f.name)
 
-                            if (!result?.success) {
-                              alert("Download failed");
-                            }
-                          }}
-                        >
-                          ⬇ {f.name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : "--"}
-              </td>
-              <td>
-                {(a.staffAssigned || [])
-                  .map(uid => staffNameMap[uid] || uid)
-                  .join(", ")}
-              </td>
-              <td>
-                {a.createdAt
-                  ? new Date(a.createdAt.seconds * 1000).toLocaleString()
-                  : "--"}
-              </td>
-              <td>
-                <button onClick={() => handleEdit(a)}>Edit</button>
-                <button onClick={() => handleDelete(a.id)}>Delete</button>
-              </td>
-            </tr>
-          )) : (
+                            //   if (!result?.success) {
+                            //     alert("Download failed");
+                            //   }
+                            // }}
+                            onClick={async () => {
+                              const result = await window.electron.downloadFile(
+                                f.fileId,
+                                null,
+                                f.name
+                              );
+
+                              if (!result?.success) {
+                                alert("Download failed");
+                              }
+                            }}
+                          >
+                            ⬇ {f.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : "--"}
+                </td>
+                <td>
+                  {(a.staffAssigned || [])
+                    .map(uid => staffNameMap[uid] || uid)
+                    .join(", ")}
+                </td>
+                <td>
+                  {a.createdAt
+                    ? new Date(a.createdAt.seconds * 1000).toLocaleString()
+                    : "--"}
+                </td>
+                <td>
+                  <button
+                    className="btn-edit"
+                    onClick={() => allowed && handleEdit(a)}
+                    disabled={!allowed}
+                    style={{
+                      opacity: allowed ? 1 : 0.5,
+                      cursor: allowed ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    className="btn-delete"
+                    onClick={() => allowed && handleDelete(a.id)}
+                    disabled={!allowed}
+                    style={{
+                      opacity: allowed ? 1 : 0.5,
+                      cursor: allowed ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            );
+          }) : (
             <tr>
               <td colSpan="6" className="text-center">
                 No award records yet.

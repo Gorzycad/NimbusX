@@ -1,86 +1,118 @@
+//src/helpers/generatePoPdf.js
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+export function generatePoPdf({ po, boq, mtoOverride = [], deliveryFee = 0 }) {
+  const doc = new jsPDF();
 
-export function generatePoPdf({ po, boq }) {
-    const doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text("PURCHASE ORDER", 14, 15);
 
-    // ---------- HEADER ----------
-    doc.setFontSize(16);
-    doc.text("PURCHASE ORDER", 14, 15);
+  doc.setFontSize(10);
+  doc.text(`PO ID: ${po.poId}`, 14, 25);
+  doc.text(`Project: ${po.projectName}`, 14, 32);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 39);
 
-    doc.setFontSize(10);
-    doc.text(`PO ID: ${po.poId}`, 14, 25);
-    doc.text(`Project: ${po.projectName}`, 14, 32);
-    doc.text(`BOQ: ${boq.title}`, 14, 39);
-    doc.text(
-        `Date: ${new Date().toLocaleDateString()}`,
-        14,
-        46
+  let y = 65;
+  let subtotal = 0;
+
+  doc.setFontSize(11);
+
+  doc.text(
+    `Recipient Address: ${po.recipientAddress || "-"}`,
+    14,
+    45
+  );
+
+  doc.text(
+    `Recipient Phone: ${po.recipientPhone || "-"}`,
+    14,
+    52
+  );
+
+  const renderSection = (title, items = []) => {
+    const validItems = items.filter(
+      (r) => Number(r.qty || 0) > 0
     );
 
-    let y = 55;
+    if (!validItems.length) return;
 
-    // ---------- TABLE RENDER ----------
-    const renderSection = (title, rows) => {
-        if (!rows?.length) return;
+    doc.setFontSize(12);
+    doc.text(title.toUpperCase(), 14, y);
+    y += 5;
 
-        doc.setFontSize(12);
-        doc.text(title.toUpperCase(), 14, y);
-        y += 4;
+    const body = validItems
+      .filter((r) => Number(r.qty || 0) > 0)
+      .map((r) => {
+        const qty = Number(r.qty || 0);
+        const rate = Number(r.rate || 0);
+        const total = qty * rate;
 
-        let sectionTotal = 0;
+        subtotal += total;
 
-        const body = rows.map((r) => {
-            const qty = Number(r.qty) || 0;
-            const rate = Number(r.rate) || 0;
-            const total = r.total ? Number(r.total) : qty * rate;
+        return [
+          r.item || r.description || "",
+          qty,
+          r.unit || "",
+          rate.toFixed(2),
+          total.toFixed(2),
+        ];
+      });
 
-            sectionTotal += total;
+    autoTable(doc, {
+      startY: y,
+      head: [["Item", "Qty", "Unit", "Rate", "Total"]],
+      body,
+      theme: "grid",
+      styles: { fontSize: 9 },
+    });
 
-            return [
-                r.item || "",
-                qty,
-                r.unit || "",
-                rate.toFixed(2),
-                total.toFixed(2),
-            ];
-        });
+    y = doc.lastAutoTable.finalY + 10;
+  };
 
-        autoTable(doc, {
-            startY: y,
-            head: [["Item", "Qty", "Unit", "Rate", "Total"]],
-            body,
-            styles: { fontSize: 9 },
-            theme: "grid",
-            headStyles: { fillColor: [230, 230, 230] },
-            columnStyles: {
-                1: { halign: "right" },
-                3: { halign: "right" },
-                4: { halign: "right" },
-            },
-        });
+  // ✅ use MTO if available
+  if (mtoOverride?.length) {
+    renderSection("MTO ITEMS", mtoOverride);
+  } else {
+    renderSection("Mechanical", boq?.mechanical);
+    renderSection("Electrical", boq?.electrical);
+    renderSection("Plumbing", boq?.plumbing);
+  }
 
-        // 🔹 GRAND TOTAL ROW
-        autoTable(doc, {
-            startY: doc.lastAutoTable.finalY,
-            body: [[
-                { content: "SECTION TOTAL", colSpan: 4, styles: { halign: "right", fontStyle: "bold" } },
-                { content: sectionTotal.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
-            ]],
-            theme: "grid",
-            styles: { fontSize: 10 },
-        });
+  const grandTotal = subtotal + Number(deliveryFee || 0);
 
-        y = doc.lastAutoTable.finalY + 10;
+  autoTable(doc, {
+    startY: y,
+    body: [
+      [
+        { content: "SUBTOTAL", styles: { fontStyle: "bold" } },
+        { content: subtotal.toFixed(2), styles: { halign: "right" } },
+      ],
+    ],
+  });
 
-    };
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY,
+    body: [
+      [
+        { content: "DELIVERY FEE", styles: { fontStyle: "bold" } },
+        { content: deliveryFee.toFixed(2), styles: { halign: "right" } },
+      ],
+    ],
+  });
 
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY,
+    body: [
+      [
+        { content: "TOTAL PAYABLE", styles: { fontStyle: "bold" } },
+        {
+          content: grandTotal.toFixed(2),
+          styles: { halign: "right", fontStyle: "bold" },
+        },
+      ],
+    ],
+  });
 
-    renderSection("Mechanical", boq.mechanical);
-    renderSection("Electrical", boq.electrical);
-    renderSection("Plumbing", boq.plumbing);
-
-    // ---------- SAVE ----------
-    doc.save(`${po.poId}.pdf`);
+  doc.save(`${po.poId}.pdf`);
 }

@@ -1,4 +1,5 @@
 // electron/main.js
+import admin from "firebase-admin";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -10,7 +11,26 @@ import pkg from "electron-updater";
 import axios from "axios";
 import { google } from "googleapis";
 import fetch from "node-fetch";
+import handleGoogleTokenFlow from "../hvac-backend/getRefreshToken.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+console.log(import.meta.url);
+const serviceAccountPath = path.join(
+  __dirname,
+  "../hvac-backend/serviceAccountKey.json"
+);
+console.log("Service Account Path:", serviceAccountPath);
+
+const serviceAccount = JSON.parse(
+  fs.readFileSync(serviceAccountPath, "utf8")
+);
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 
 const appPkg = JSON.parse(
   fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8")
@@ -38,27 +58,25 @@ let protocolUrl = null;
 
 // --- Catch protocol URLs on Windows cold start ---
 if (process.platform === "win32") {
-  //const arg = process.argv.find((a) => a.startsWith("hvacapp://"));
   const arg = process.argv.find((a) => a.includes("hvacapp://"));
   if (arg) protocolUrl = arg;
 }
 
 async function handleOAuthCode(code) {
   try {
-    const oauth2Client = new google.auth.OAuth2(
-      CONFIG.GOOGLE_CLIENT_ID,
-      CONFIG.GOOGLE_CLIENT_SECRET,
-      CONFIG.GOOGLE_REDIRECT_URI
-    );
+    const result = await handleGoogleTokenFlow(CONFIG, code);
 
-    // Exchange code for tokens
-    const { tokens } = await oauth2Client.getToken(code);
-    oauth2Client.setCredentials(tokens);
-
-    // Send tokens to renderer
-    if (mainWindow) {
-      mainWindow.webContents.send("oauth-success", tokens);
+    if (!result.refreshToken) {
+      throw new Error("No refresh token returned from Google");
     }
+
+    // Send ONLY refresh token (not full tokens)
+    if (mainWindow) {
+      mainWindow.webContents.send("oauth-success", {
+        refreshToken: result.refreshToken,
+      });
+    }
+
   } catch (err) {
     console.error("OAuth token exchange failed:", err);
   }
@@ -179,37 +197,12 @@ app.whenReady().then(() => {
       setInterval(() => autoUpdater.checkForUpdates(), 600000);
     }
 
-    // const userHome = os.homedir();
-
-    // const secretsDir = path.join(userHome, "nimbusxsecrets");
-    // const configPath = path.join(secretsDir, "config.json");
-
-    // // 1. Create folder
-    // if (!fs.existsSync(secretsDir)) {
-    //   fs.mkdirSync(secretsDir, { recursive: true });
-    // }
-
-    // // 2. Create config.json if not exists
-    // const sourcePath = path.join(process.resourcesPath, "config.json");
-
-    // if (!fs.existsSync(configPath)) {
-    //   fs.copyFileSync(sourcePath, configPath);
-    //}
-
   } catch (err) {
     console.error("Backend failed to start:", err);
   }
 });
 
-//const CONFIG = JSON.parse(fs.readFileSync(secretsPath, "utf8"));
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const isDev = !app.isPackaged;
-
-
-
 
 let mainWindow;
 let backendServer = null;
@@ -317,20 +310,49 @@ ipcMain.handle("download-file", async (event, { fileId, token, fileName }) => {
   }
 });
 
-
-
-ipcMain.handle("get-file-url", async (event, { fileId, accessToken }) => {
+ipcMain.handle("get-company-logo", async (event, { fileId, companyId, userId }) => {
   try {
+    // 🔥 1. GET USER DOC (NOT COMPANY)
+    const userDoc = await admin.firestore()
+      .collection("users")
+      .doc(userId)
+      .get();
+
+    const refreshToken = userDoc.data()?.googleRefreshToken;
+
+    if (!refreshToken) {
+      throw new Error("No refresh token found for user");
+    }
+
+    // 🔥 2. OAuth client
+    const oauth2Client = new google.auth.OAuth2(
+      CONFIG.GOOGLE_CLIENT_ID,
+      CONFIG.GOOGLE_CLIENT_SECRET,
+      CONFIG.GOOGLE_REDIRECT_URI
+    );
+
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken,
+    });
+
+    // 🔥 3. Get access token
+    const { token } = await oauth2Client.getAccessToken();
+
+    if (!token) {
+      throw new Error("Failed to generate access token");
+    }
+
+    // 🔥 4. Fetch image from Drive
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
 
     const response = await fetch(url, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch file");
+      throw new Error("Failed to fetch file from Drive");
     }
 
     const buffer = await response.arrayBuffer();
@@ -340,9 +362,146 @@ ipcMain.handle("get-file-url", async (event, { fileId, accessToken }) => {
       success: true,
       url: `data:image/png;base64,${base64}`,
     };
+
   } catch (err) {
-    console.error("get-file-url error:", err);
+    console.error("get-company-logo error:", err);
     return { success: false };
+  }
+});
+
+ipcMain.handle("get-drive-image",
+  async (event, { fileId, refreshToken }) => {
+    try {
+      console.log("FILE ID:", fileId);
+
+      const oauth2Client =
+        new google.auth.OAuth2(
+          CONFIG.GOOGLE_CLIENT_ID,
+          CONFIG.GOOGLE_CLIENT_SECRET,
+          CONFIG.GOOGLE_REDIRECT_URI
+        );
+
+      oauth2Client.setCredentials({
+        refresh_token: refreshToken,
+      });
+
+      const { token } =
+        await oauth2Client.getAccessToken();
+
+      console.log(
+        "ACCESS TOKEN GENERATED:",
+        !!token
+      );
+
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      console.log(
+        "GOOGLE STATUS:",
+        response.status
+      );
+
+      if (!response.ok) {
+        const text =
+          await response.text();
+
+        console.log(
+          "GOOGLE ERROR:",
+          text
+        );
+
+        return {
+          success: false,
+          error: text,
+        };
+      }
+
+      const buffer =
+        await response.arrayBuffer();
+
+      console.log(
+        "IMAGE SIZE:",
+        buffer.byteLength
+      );
+
+      return {
+        success: true,
+        url:
+          "data:image/png;base64," +
+          Buffer.from(buffer).toString(
+            "base64"
+          ),
+      };
+    } catch (err) {
+      console.error(
+        "GET DRIVE IMAGE ERROR:",
+        err
+      );
+
+      return {
+        success: false,
+        error: err.message,
+      };
+    }
+  }
+);
+
+ipcMain.handle("get-drive-file", async (event, { fileId, refreshToken }) => {
+  try {
+    if (!fileId || !refreshToken) {
+      throw new Error("Missing fileId or refreshToken");
+    }
+
+    const oauth2Client = new google.auth.OAuth2(
+      CONFIG.GOOGLE_CLIENT_ID,
+      CONFIG.GOOGLE_CLIENT_SECRET,
+      CONFIG.GOOGLE_REDIRECT_URI
+    );
+
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken,
+    });
+
+    const { token } = await oauth2Client.getAccessToken();
+
+    if (!token) {
+      throw new Error("Failed to get access token");
+    }
+
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const buffer = await response.arrayBuffer();
+
+    return {
+      success: true,
+      fileId,
+      url: `data:image/png;base64,${Buffer.from(buffer).toString("base64")}`,
+    };
+
+  } catch (err) {
+    console.error("Drive IPC error:", err);
+
+    return {
+      success: false,
+      error: err.message,
+    };
   }
 });
 
@@ -392,10 +551,6 @@ app.on("activate", () => {
   if (mainWindow === null) createWindow();
 });
 
-// Export CONFIG so other Electron modules can import it
-//export { CONFIG };
-// Pass CONFIG into backend when starting server
-//export default CONFIG;
 
 //To update my app, from project root terminal, type each code line by line and press enter each time. wait to finish
 // git add .

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-
 import {
   addExecution,
   updateExecution,
@@ -43,8 +42,7 @@ function calculateProgress(startDate, finishDate) {
 /* ---------------- COMPONENT ---------------- */
 
 export default function ExecutionPage() {
-  const { companyId, user } = useAuth();
-
+  const { companyId, user, role, displayName } = useAuth();
   const [executions, setExecutions] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -159,7 +157,7 @@ export default function ExecutionPage() {
       projectName: formData.projectName,
       staffAssigned: formData.staffAssigned,
       startDate: formData.startDate,
-      endDate: overallFinish, 
+      endDate: overallFinish,
       tasks: formData.tasks,
       progress,
     };
@@ -228,7 +226,17 @@ export default function ExecutionPage() {
     setExecutions(prev => prev.filter(e => e.id !== id));
   };
 
-   if (loading) {
+  const canModifyLead = (e) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = e.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
+  if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
         <div className="text-center">
@@ -330,43 +338,69 @@ export default function ExecutionPage() {
       <table className="table table-striped">
         <thead>
           <tr>
+            <th>Created By</th>
             <th>Project</th>
             <th>Progress</th>
             <th>Staff</th>
             <th>Date</th>
-            <th></th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {executions.map(e => (
-            <tr key={e.id}>
-              <td>{e.projectName}</td>
-              <td>
-                <div className="progress">
-                  <div
-                    className="progress-bar"
-                    style={{ width: `${e.progress || 0}%` }}
-                  >
-                    {e.progress || 0}%
+          {executions.map(e => {
+            const allowed = canModifyLead(e);
+            return (
+              <tr key={e.id}>
+                <td>{e.createdBy?.name || "--"}</td>
+                <td>{e.projectName}</td>
+                <td>
+                  <div className="progress">
+                    <div
+                      className="progress-bar"
+                      style={{ width: `${e.progress || 0}%` }}
+                    >
+                      {e.progress || 0}%
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td>
-                {(e.staffAssigned || [])
-                  .map(uid => staffNameMap[uid] || uid)
-                  .join(", ")}
-              </td>
-              <td>
-                {e.createdAt?.seconds
-                  ? new Date(e.createdAt.seconds * 1000).toLocaleDateString()
-                  : "--"}
-              </td>
-              <td>
-                <button onClick={() => handleEdit(e)}>Edit</button>{" "}
-                <button onClick={() => handleDelete(e.id)}>Delete</button>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  {(e.staffAssigned || [])
+                    .map(uid => staffNameMap[uid] || uid)
+                    .join(", ")}
+                </td>
+                <td>
+                  {e.createdAt?.seconds
+                    ? new Date(e.createdAt.seconds * 1000).toLocaleDateString()
+                    : "--"}
+                </td>
+                <td>
+                  <button
+                    className="btn-edit"
+                    onClick={() => allowed && handleEdit(e)}
+                    disabled={!allowed}
+                    style={{
+                      opacity: allowed ? 1 : 0.5,
+                      cursor: allowed ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    className="btn-delete"
+                    onClick={() => allowed && handleDelete(e.id)}
+                    disabled={!allowed}
+                    style={{
+                      opacity: allowed ? 1 : 0.5,
+                      cursor: allowed ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

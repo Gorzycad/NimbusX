@@ -6,7 +6,9 @@ import {
   doc,
   getDocs,
   deleteDoc,
-  serverTimestamp
+  serverTimestamp,
+  query,
+  where
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -39,3 +41,38 @@ export async function getBoqs(companyId) {
   const snap = await getDocs(collection(db, "companies", companyId, "boqs"));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
+
+export async function getBoqMaterials() {
+
+  const snap = await getDocs(
+    collection(db, "products")
+  );
+
+  return snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+
+export const updateMaterialPrice = async (
+  id,
+  data
+) => {
+
+  const productRef = doc(
+    db,
+    "products",
+    id
+  );
+
+  await updateDoc(productRef, {
+    name: data.name,
+    unit: data.unit,
+    unitKg: Number(data.unitKg || 0),
+    price: Number(data.price || 0),
+    stock: Number(data.stock || 0),
+    imageFileId: data.imageFileId || "",
+    updatedAt: new Date(),
+  });
+
+};

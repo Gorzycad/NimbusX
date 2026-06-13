@@ -1,3 +1,4 @@
+// src/pages/dashboard/DashboardHome.jsx
 import React, { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import Notifications from "./Notifications";
@@ -5,6 +6,7 @@ import { formatRole } from "../../helpers/formatRole";
 import DirectMessages from "../chat/DirectMessages";
 import AdminAnnouncements from "../chat/AdminAnnouncements";
 import ProjectChat from "../chat/ProjectChat";
+import TutorialsGrid from "../chat/TutorialVideos";
 
 export default function DashboardHome() {
   const { user, userData, displayName, companyId, role } = useAuth();
@@ -19,6 +21,8 @@ export default function DashboardHome() {
         return <AdminAnnouncements />;
       case "project":
         return <ProjectChat />;
+      case "tutorials":
+        return <TutorialsGrid />;
       default:
         return <Notifications />;
     }
@@ -30,7 +34,12 @@ export default function DashboardHome() {
 
   return (
     <div style={{ padding: 30 }}>
-      <p><strong>User:</strong> {displayName || user.displayName || user.email}</p>
+      <p>
+        <strong>User:</strong>{" "}
+        {userData?.firstName || userData?.lastName
+          ? `${userData?.firstName || ""} ${userData?.lastName || ""}`.trim()
+          : user?.email}
+      </p>
       <p><strong>Company ID:</strong> {companyIds}</p>
       <p>
         <strong>Role:</strong> {formatRole(role)}
@@ -60,6 +69,10 @@ export default function DashboardHome() {
           <button onClick={() => setActivePanel("project")}>
             Project Chat
           </button>
+
+          <button onClick={() => setActivePanel("tutorials")}>
+            How to -Tutorials
+          </button>
         </div>
 
         {/* CONTENT AREA */}
@@ -70,3 +83,4 @@ export default function DashboardHome() {
     </div>
   );
 }
+

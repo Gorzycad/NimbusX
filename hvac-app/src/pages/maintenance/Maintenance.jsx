@@ -15,7 +15,7 @@ export default function Maintenance() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    
+
 
     if (!companyId) return;
     setLoading(true);
@@ -95,23 +95,23 @@ export default function Maintenance() {
   };
 
   const removeEntry = async (day, index) => {
-  const key = dateKey(day);
-  const entry = entries[key]?.[index];
+    const key = dateKey(day);
+    const entry = entries[key]?.[index];
 
-  if (!entry) return;
-  if (!window.confirm("Delete this entry?")) return;
+    if (!entry) return;
+    if (!window.confirm("Delete this entry?")) return;
 
-  try {
-    await deleteEntryFromDB(companyId, entry.id);
+    try {
+      await deleteEntryFromDB(companyId, entry.id);
 
-    setEntries((prev) => ({
-      ...prev,
-      [key]: prev[key].filter((_, i) => i !== index)
-    }));
-  } catch (err) {
-    console.error("Delete failed:", err);
-  }
-};
+      setEntries((prev) => ({
+        ...prev,
+        [key]: prev[key].filter((_, i) => i !== index)
+      }));
+    } catch (err) {
+      console.error("Delete failed:", err);
+    }
+  };
 
   const updateEntry = async (day, index, field, value) => {
     const key = dateKey(day);
@@ -137,7 +137,7 @@ export default function Maintenance() {
     setCurrentMonth(new Date(year, month + dir, 1));
   };
 
-   if (loading) {
+  if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
         <div className="text-center">
@@ -235,7 +235,7 @@ export default function Maintenance() {
   );
 }
 
-// // src/pages/maintenance/Maintenance.jsx
+// src/pages/maintenance/Maintenance.jsx
 // import React from "react";
 // import { Container, Card } from "react-bootstrap";
 // import { useAuth } from "../../contexts/AuthContext";

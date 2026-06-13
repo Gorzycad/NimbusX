@@ -40,6 +40,9 @@ export default function InventoryPage() {
   const [activeSubTab, setActiveSubTab] = useState("inventory");
   const [showTakeOut, setShowTakeOut] = useState(false);
   const [showBringIn, setShowBringIn] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const [movementForm, setMovementForm] = useState({
     productId: "",
@@ -69,62 +72,92 @@ export default function InventoryPage() {
   const vendorKey = `vendors_${activeInventoryTab}`;
   const orderKey = `orders_${activeInventoryTab}`;
 
+  // useEffect(() => {
+  //   if (!companyId) return;
+
+
+  //   const loadData = async () => {
+  //     try {
+  //       const inv = await getInventoryTable(companyId, inventoryKey);
+  //       const vendors = await getInventoryTable(companyId, vendorKey);
+  //       const orders = await getInventoryTable(companyId, orderKey);
+
+  //       if (inv.length) setInventoryRows(inv);
+  //       if (vendors.length) setVendorRows(vendors);
+  //       if (orders.length) setOrderRows(orders);
+
+  //     } catch (err) {
+  //       console.error("Load Failed:", err);
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
+
+  //   setLoading(true);
+  //   loadData();
+  // }, [companyId, activeInventoryTab]);
+
   useEffect(() => {
     if (!companyId) return;
 
-
     const loadData = async () => {
-      try {
-        const inv = await getInventoryTable(companyId, inventoryKey);
-        const vendors = await getInventoryTable(companyId, vendorKey);
-        const orders = await getInventoryTable(companyId, orderKey);
+      setLoading(true);
 
-        if (inv.length) setInventoryRows(inv);
-        if (vendors.length) setVendorRows(vendors);
-        if (orders.length) setOrderRows(orders);
+      const inv = await getInventoryTable(companyId, inventoryKey) || [];
+      const vendors = await getInventoryTable(companyId, vendorKey) || [];
+      const orders = await getInventoryTable(companyId, orderKey) || [];
 
-      } catch (err) {
-        console.error("Load Failed:", err);
-      } finally {
-        setLoading(false);
-      }
+      setInventoryRows(inv.length ? inv : [emptyInventoryRow]);
+      setVendorRows(vendors);
+      setOrderRows(orders);
+
+      setLoading(false);
     };
 
-    setLoading(true);
     loadData();
   }, [companyId, activeInventoryTab]);
 
   useEffect(() => {
-  setInventoryRows(prev => {
-    let changed = false;
+    const timer = setTimeout(() => {
+      setInventoryRows(prev => {
+        let changed = false;
 
-    const updated = prev.map(row => {
-      if (!row.orderTime) return row;
+        const updated = prev.map(row => {
+          if (!row.orderTime) return row;
 
-      const days = Number(row.orderTime);
-      if (isNaN(days)) return row;
+          const days = Number(row.orderTime);
+          if (isNaN(days)) return row;
 
-      const today = new Date();
-      const etaDate = new Date(today);
-      etaDate.setDate(today.getDate() + days);
+          const etaDate = new Date();
+          etaDate.setDate(etaDate.getDate() + days);
 
-      const newEta = etaDate.toISOString().split("T")[0];
+          const newEta = etaDate.toISOString().split("T")[0];
 
-      if (row.eta !== newEta) {
-        changed = true;
-        return { ...row, eta: newEta };
-      }
+          if (row.eta === newEta) return row;
 
-      return row;
-    });
+          changed = true;
+          return { ...row, eta: newEta };
+        });
 
-    return changed ? updated : prev; // ✅ prevents infinite loop
-  });
-}, [inventoryRows]);
+        return changed ? updated : prev;
+      });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [inventoryRows.map(r => r.orderTime).join(",")]);
 
   // useEffect(() => {
-  //   setInventoryRows(prev =>
-  //     prev.map(row => {
+  //   setInventoryRows([emptyInventoryRow]);
+  //   setVendorRows([]);
+  //   setOrderRows([]);
+  //   setLoading(true);
+  // }, [activeInventoryTab]);
+
+  // useEffect(() => {
+  //   setInventoryRows(prev => {
+  //     let changed = false;
+
+  //     const updated = prev.map(row => {
   //       if (!row.orderTime) return row;
 
   //       const days = Number(row.orderTime);
@@ -134,14 +167,20 @@ export default function InventoryPage() {
   //       const etaDate = new Date(today);
   //       etaDate.setDate(today.getDate() + days);
 
-  //       return {
-  //         ...row,
-  //         eta: etaDate.toISOString().split("T")[0], // YYYY-MM-DD
-  //       };
-  //     })
-  //   );
+  //       const newEta = etaDate.toISOString().split("T")[0];
+
+  //       if (row.eta !== newEta) {
+  //         changed = true;
+  //         return { ...row, eta: newEta };
+  //       }
+
+  //       return row;
+  //     });
+
+  //     return changed ? updated : prev; // ✅ prevents infinite loop
+  //   });
   // }, [inventoryRows]);
-  //}, [inventoryRows.map(r => r.orderTime).join()]);
+
 
   /* -----------------------------
      AUTO CALCULATIONS
@@ -169,66 +208,89 @@ export default function InventoryPage() {
   /* -----------------------------
      SYNC VENDOR → INVENTORY
   ----------------------------- */
-  useEffect(() => {
-    const updated = inventoryRows.map(inv => {
-      const existing = vendorRows.find(v => v.productId === inv.productId);
-
-      return {
-        productId: inv.productId,
-        product: inv.product,
-        unit: inv.unit,
-        contactName: existing?.contactName || "",
-        contactPhone: existing?.contactPhone || "",
-      };
-    });
-
-    setVendorRows(updated);
-  }, [inventoryRows]);
-
   // useEffect(() => {
-  //   setVendorRows(prev => {
-  //     return inventoryRows.map(inv => {
-  //       const existing = prev.find(v => v.productId === inv.productId);
+  //   const updated = inventoryRows.map(inv => {
+  //     const existing = vendorRows.find(v => v.productId === inv.productId);
 
-  //       return {
-  //         productId: inv.productId,
-  //         product: inv.product,
-  //         unit: inv.unit,
-  //         contactName: existing?.contactName || "",
-  //         contactPhone: existing?.contactPhone || "",
-  //       };
-  //     });
+  //     return {
+  //       productId: inv.productId,
+  //       product: inv.product,
+  //       unit: inv.unit,
+  //       contactName: existing?.contactName || "",
+  //       contactPhone: existing?.contactPhone || "",
+  //     };
   //   });
+
+  //   setVendorRows(updated);
   // }, [inventoryRows]);
+  useEffect(() => {
+    if (!inventoryRows.length) return;
+
+    setVendorRows(prev => {
+      return inventoryRows.map(inv => {
+        const existing = prev.find(v => v.productId === inv.productId);
+
+        return {
+          productId: inv.productId,
+          product: inv.product,
+          unit: inv.unit,
+          contactName: existing?.contactName || "",
+          contactPhone: existing?.contactPhone || "",
+        };
+      });
+    });
+  }, [inventoryRows, activeInventoryTab]);
+
 
   /* -----------------------------
      SYNC INVENTORY + VENDOR → ORDER
   ----------------------------- */
   useEffect(() => {
-    setOrderRows(prev => {
+    setOrderRows(() => {
       return inventoryRows.map(inv => {
-        const existing = prev.find(o => o.productId === inv.productId);
         const vendor = vendorRows.find(v => v.productId === inv.productId);
 
-        const quantity = existing?.quantity || "";
-        const price = existing?.price || inv.price || "";
+        const quantity = "";
+        const price = inv.price || "";
 
         return {
           productId: inv.productId,
           product: inv.product,
           unit: inv.unit,
           quantity,
-          price, // ✅ NEW editable
-          totalCost:
-            quantity && price
-              ? (Number(quantity) * Number(price)).toFixed(2)
-              : "",
+          price,
+          totalCost: "",
           contactName: vendor?.contactName || "",
           contactPhone: vendor?.contactPhone || "",
         };
       });
     });
-  }, [inventoryRows, vendorRows]);
+  }, [inventoryRows, vendorRows, activeInventoryTab]);
+  // useEffect(() => {
+  //   setOrderRows(prev => {
+  //     return inventoryRows.map(inv => {
+  //       const existing = prev.find(o => o.productId === inv.productId);
+  //       const vendor = vendorRows.find(v => v.productId === inv.productId);
+
+  //       const quantity = existing?.quantity || "";
+  //       const price = existing?.price || inv.price || "";
+
+  //       return {
+  //         productId: inv.productId,
+  //         product: inv.product,
+  //         unit: inv.unit,
+  //         quantity,
+  //         price, // ✅ NEW editable
+  //         totalCost:
+  //           quantity && price
+  //             ? (Number(quantity) * Number(price)).toFixed(2)
+  //             : "",
+  //         contactName: vendor?.contactName || "",
+  //         contactPhone: vendor?.contactPhone || "",
+  //       };
+  //     });
+  //   });
+  // }, [inventoryRows, vendorRows]);
 
   /* -----------------------------
      HELPERS
@@ -290,14 +352,20 @@ export default function InventoryPage() {
     if (!companyId) return;
 
     try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
       await saveInventoryTable(companyId, inventoryKey, inventoryRows);
       await saveInventoryTable(companyId, vendorKey, vendorRows);
       await saveInventoryTable(companyId, orderKey, orderRows);
 
-      alert("Inventory data saved successfully.");
+      setSuccess("Inventory data saved successfully.");
     } catch (error) {
       console.error("Save failed:", error);
-      alert("Error saving inventory.");
+      setError("Error saving inventory.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -317,7 +385,7 @@ export default function InventoryPage() {
 
 
     if (!productId || !qty || !destination) {
-      alert("Fill all fields");
+      setError("Fill all fields");
       return;
     }
 
@@ -395,15 +463,16 @@ export default function InventoryPage() {
     const sourceItemExists = updatedSource.some(r => r.productId === productId);
 
     if (!sourceItemExists) {
-      alert("Product not found in current inventory");
+      setError("Product not found in current inventory");
       return;
     }
 
-    alert(
-      destination === "site"
-        ? "Stock taken to site successfully"
-        : `Stock transferred to ${destination}`
-    );
+    // alert(
+    //   destination === "site"
+    //     ? "Stock taken to site successfully"
+    //     : `Stock transferred to ${destination}`
+    // );
+    setSuccess(`Stock transferred to ${destination === "site" ? "site" : destination}`);
 
     setShowTakeOut(false);
 
@@ -421,7 +490,7 @@ export default function InventoryPage() {
     const { productId, qty } = movementForm;
 
     if (!productId || !qty) {
-      alert("Product ID and quantity are required");
+      setError("Product ID and quantity are required");
       return;
     }
 
@@ -454,13 +523,13 @@ export default function InventoryPage() {
     });
 
     if (!found) {
-      alert("Product does not exist. Add it first in inventory table.");
+      setError("Product does not exist. Add it first in inventory table.");
       return;
     }
 
     await saveInventoryTable(companyId, inventoryKey, updatedInventory);
 
-    alert("Stock updated successfully");
+    setSuccess("Stock updated successfully");
 
     setMovementForm({
       productId: "",
@@ -480,6 +549,24 @@ export default function InventoryPage() {
   return (
     <div className="container py-4">
       <h2 className="mb-4">Inventory Management</h2>
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="alert alert-success">
+          {success}
+        </div>
+      )}
+
+      {saving && (
+        <div className="alert alert-info">
+          Saving inventory...
+        </div>
+      )}
 
       {/* =========================
         PROJECT TABS
@@ -529,7 +616,7 @@ export default function InventoryPage() {
         <>
           {/* ACTION BUTTONS */}
           <div className="d-flex gap-2 mb-3">
-            <button className="btn btn-danger" onClick={() => { setShowTakeOut(true); setShowBringIn(false);} }>
+            <button className="btn btn-danger" onClick={() => { setShowTakeOut(true); setShowBringIn(false); }}>
               Take Out
             </button>
             <button className="btn btn-success" onClick={() => { setShowBringIn(true); setShowTakeOut(false); }}>
@@ -577,6 +664,65 @@ export default function InventoryPage() {
               <tbody>
                 {inventoryRows.map((row, i) => (
                   <tr key={i}>
+                    <td>
+                      <input value={row.productId} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "productId", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.product} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "product", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.unit} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "unit", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.qty} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "qty", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.price} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "price", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.total} disabled />
+                    </td>
+
+                    <td>
+                      <input value={row.reorder} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "reorder", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.orderTime} onChange={e =>
+                        handleChange(inventoryRows, setInventoryRows, i, "orderTime", e.target.value)
+                      } />
+                    </td>
+
+                    <td>
+                      <input value={row.eta} disabled />
+                    </td>
+
+                    <td>
+                      <button onClick={() => removeInventoryRow(i)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {/* <tbody>
+                {inventoryRows.map((row, i) => (
+                  <tr key={i}>
                     {Object.keys(row).map((field, idx) => (
                       <td key={idx}>
                         <input
@@ -605,7 +751,7 @@ export default function InventoryPage() {
                     </td>
                   </tr>
                 ))}
-              </tbody>
+              </tbody> */}
             </table>
           </div>
 
@@ -682,6 +828,89 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
+                {orderRows.map((row, i) => {
+                  const qty = Number(row.quantity || 0);
+                  const price = Number(row.price || 0);
+                  const totalCost = qty * price;
+
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.productId}
+                          disabled
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.product}
+                          disabled
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.unit}
+                          disabled
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.quantity}
+                          onChange={(e) =>
+                            handleChange(orderRows, setOrderRows, i, "quantity", e.target.value)
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.price}
+                          onChange={(e) =>
+                            handleChange(orderRows, setOrderRows, i, "price", e.target.value)
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={totalCost.toFixed(2)}
+                          disabled
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.contactName}
+                          onChange={(e) =>
+                            handleChange(orderRows, setOrderRows, i, "contactName", e.target.value)
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="form-control form-control-sm"
+                          value={row.contactPhone}
+                          onChange={(e) =>
+                            handleChange(orderRows, setOrderRows, i, "contactPhone", e.target.value)
+                          }
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {/* <tbody>
                 {orderRows.map((row, i) => (
                   <tr key={i}>
                     {Object.keys(row).map((field, idx) => (
@@ -706,7 +935,7 @@ export default function InventoryPage() {
                     ))}
                   </tr>
                 ))}
-              </tbody>
+              </tbody> */}
             </table>
           </div>
 
@@ -741,35 +970,6 @@ export default function InventoryPage() {
             }
           />
 
-          {/* ONLY FOR BRING IN */}
-          {/* {showBringIn && (
-            <>
-              <input
-                className="form-control mb-2"
-                placeholder="Product Name"
-                onChange={e =>
-                  setMovementForm(prev => ({ ...prev, product: e.target.value }))
-                }
-              />
-
-              <input
-                className="form-control mb-2"
-                placeholder="Unit"
-                onChange={e =>
-                  setMovementForm(prev => ({ ...prev, unit: e.target.value }))
-                }
-              />
-
-              <input
-                className="form-control mb-2"
-                placeholder="Price"
-                type="number"
-                onChange={e =>
-                  setMovementForm(prev => ({ ...prev, price: e.target.value }))
-                }
-              />
-            </>
-          )} */}
 
           {/* ONLY FOR TAKE OUT */}
           {showTakeOut && (
@@ -813,491 +1013,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* {(showTakeOut || showBringIn) && (
-        <div className="card p-3 mt-4">
-          <h5>{showTakeOut ? "Take Out Stock" : "Bring In Stock"}</h5>
-
-          <input
-            className="form-control mb-2"
-            placeholder="Product ID"
-            onChange={e =>
-              setMovementForm(prev => ({ ...prev, productId: e.target.value }))
-            }
-          />
-
-          <input
-            className="form-control mb-2"
-            placeholder="Product Name"
-            onChange={e =>
-              setMovementForm(prev => ({ ...prev, product: e.target.value }))
-            }
-          />
-
-          <input
-            className="form-control mb-2"
-            placeholder="Unit (e.g. pcs, kg)"
-            onChange={e =>
-              setMovementForm(prev => ({ ...prev, unit: e.target.value }))
-            }
-          />
-
-          <input
-            className="form-control mb-2"
-            placeholder="Price per unit"
-            type="number"
-            onChange={e =>
-              setMovementForm(prev => ({ ...prev, price: e.target.value }))
-            }
-          />
-
-          <input
-            className="form-control mb-2"
-            placeholder="Quantity"
-            type="number"
-            onChange={e =>
-              setMovementForm(prev => ({ ...prev, qty: e.target.value }))
-            }
-          />
-
-          {showBringIn && (
-            <>
-              <input
-                className="form-control mb-2"
-                placeholder="Product Name"
-                onChange={e =>
-                  setMovementForm(prev => ({ ...prev, product: e.target.value }))
-                }
-              />
-
-              <input
-                className="form-control mb-2"
-                placeholder="Unit (e.g. pcs, kg)"
-                onChange={e =>
-                  setMovementForm(prev => ({ ...prev, unit: e.target.value }))
-                }
-              />
-
-              <input
-                className="form-control mb-2"
-                placeholder="Price per unit"
-                type="number"
-                onChange={e =>
-                  setMovementForm(prev => ({ ...prev, price: e.target.value }))
-                }
-              />
-
-            </>
-          )}
-
-          {showTakeOut && (
-            <select
-              className="form-control mb-2"
-              value={movementForm.destination}
-              onChange={e =>
-                setMovementForm(prev => ({ ...prev, destination: e.target.value }))
-              }
-            >
-              <option value="">Select Destination</option>
-
-              {/* Project Inventories */}
-      {/* {projects.map(p => (
-                <option key={p} value={p}>
-                  {p} Inventory
-                </option>
-              ))} */}
-      {/* {projects
-        .filter(p => p !== activeInventoryTab)
-        .map(p => (
-          <option key={p} value={p}>
-            {p} Inventory
-          </option>
-        ))}
-
-      {/* Site */}
-      {/* <option value="site">To Site</option>
-    </select>
-  )
-}
-
-          <button
-            className="btn btn-primary me-2"
-            onClick={showTakeOut ? handleTakeOut : handleBringIn}
-          >
-            Submit
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              setShowTakeOut(false);
-              setShowBringIn(false);
-            }}
-          >
-            Cancel
-          </button>
-        </div >
-      )} */}
 
     </div >
   );
 }
-
-// return (
-//   <div className="container py-4">
-//     <h2 className="mb-4">Inventory Management</h2>
-
-//     <div className="accordion" id="inventoryAccordion">
-
-//       {/* =========================
-//          INVENTORY TAB
-//       ========================== */}
-//       <div className="accordion-item">
-//         <div className="mb-4">
-//           <div className="d-flex flex-wrap gap-2">
-
-//             {/* Main Inventory */}
-//             <button
-//               className={`btn ${activeInventoryTab === "main" ? "btn-primary" : "btn-outline-primary"}`}
-//               onClick={() => setActiveInventoryTab("main")}
-//             >
-//               Main Inventory
-//             </button>
-
-//             {/* Project Inventories */}
-//             {projects.map(p => (
-//               <button
-//                 key={p}
-//                 className={`btn ${activeInventoryTab === p ? "btn-primary" : "btn-outline-primary"}`}
-//                 onClick={() => setActiveInventoryTab(p)}
-//               >
-//                 {p} Inventory
-//               </button>
-//             ))}
-
-//           </div>
-//         </div>
-//         {activeSubTab === "inventory" && (
-//           <div>
-//             <div className="d-flex gap-2 mb-3">
-//               {["inventory", "vendor", "order"].map(tab => (
-//                 <button
-//                   key={tab}
-//                   className={`btn ${activeSubTab === tab ? "btn-dark" : "btn-outline-dark"}`}
-//                   onClick={() => setActiveSubTab(tab)}
-//                 >
-//                   {tab.toUpperCase()}
-//                 </button>
-//               ))}
-//             </div>
-//             <div className="d-flex gap-2 mb-3">
-//               <button
-//                 className="btn btn-danger"
-//                 onClick={() => setShowTakeOut(true)}
-//               >
-//                 Take Out
-//               </button>
-
-//               <button
-//                 className="btn btn-success"
-//                 onClick={() => setShowBringIn(true)}
-//               >
-//                 Bring In
-//               </button>
-//             </div>
-
-//             <div id="inventorySection" className="accordion-collapse collapse show">
-//               <div className="accordion-body">
-
-//                 {/* Summary Headers */}
-//                 <div className="row mb-4">
-//                   <div className="col-md-3">
-//                     <label>Inventory Value</label>
-//                     <input className="form-control" value={inventoryValue} disabled />
-//                   </div>
-//                   <div className="col-md-3">
-//                     <label>Unique Products</label>
-//                     <input className="form-control" value={uniqueProducts} disabled />
-//                   </div>
-//                   <div className="col-md-3">
-//                     <label>Current Date</label>
-//                     <input className="form-control" value={currentDate} disabled />
-//                   </div>
-//                   <div className="col-md-3">
-//                     <label>Day of Week</label>
-//                     <input className="form-control" value={currentDay} disabled />
-//                   </div>
-//                 </div>
-
-//                 {/* Table */}
-//                 <div className="table-responsive">
-//                   <table className="table table-bordered table-sm">
-//                     <thead className="table-light">
-//                       <tr>
-//                         <th>Product ID</th>
-//                         <th>Product</th>
-//                         <th>Unit</th>
-//                         <th>Qty in Stock</th>
-//                         <th>Price per unit</th>
-//                         <th>Total Value</th>
-//                         <th>Reorder Threshold</th>
-//                         <th>Typical Order Time (days)</th>
-//                         <th>ETA</th>
-//                         <th>Action</th>
-//                       </tr>
-//                     </thead>
-//                     <tbody>
-//                       {inventoryRows.map((row, i) => (
-//                         <tr key={i}>
-//                           {Object.keys(row).map((field, idx) => (
-//                             <td key={idx}>
-//                               <input
-//                                 className="form-control form-control-sm"
-//                                 value={row[field]}
-//                                 disabled={field === "total"}
-//                                 onChange={e =>
-//                                   handleChange(
-//                                     inventoryRows,
-//                                     setInventoryRows,
-//                                     i,
-//                                     field,
-//                                     e.target.value
-//                                   )
-//                                 }
-//                               />
-//                             </td>
-//                           ))}
-//                           <td>
-//                             <button
-//                               className="btn btn-sm btn-danger"
-//                               onClick={() => removeInventoryRow(i)}
-//                             >
-//                               Delete
-//                             </button>
-//                           </td>
-//                         </tr>
-//                       ))}
-//                     </tbody>
-//                   </table>
-//                 </div>
-
-//                 <button className="btn btn-outline-primary me-2" onClick={addInventoryRow}>
-//                   + Add Row
-//                 </button>
-//                 <button
-//                   className="btn btn-primary my-3"
-//                   onClick={handleSaveAll}
-//                 >
-//                   Save All Inventory Data
-//                 </button>
-
-
-//               </div>
-//             </div>
-//           </div>
-
-//         )}
-//         {activeSubTab === "vendor" && (
-//           <div>
-//             {/* =========================
-//          VENDOR INFO TAB
-//       ========================== */}
-//             <div className="accordion-item">
-
-//               <div className="d-flex gap-2 mb-3">
-//                 <button
-//                   className="btn btn-danger"
-//                   onClick={() => setShowTakeOut(true)}
-//                 >
-//                   Take Out
-//                 </button>
-
-//                 <button
-//                   className="btn btn-success"
-//                   onClick={() => setShowBringIn(true)}
-//                 >
-//                   Bring In
-//                 </button>
-//               </div>
-//               <div id="vendorSection" className="accordion-collapse collapse">
-//                 <div className="accordion-body">
-
-//                   <div className="table-responsive">
-//                     <table className="table table-bordered table-sm">
-//                       <thead className="table-light">
-//                         <tr>
-//                           <th>Product ID</th>
-//                           <th>Product</th>
-//                           <th>Unit</th>
-//                           <th>Typical Order time (days)</th>
-//                           <th>Contact name</th>
-//                           <th>Contact Phone number</th>
-//                         </tr>
-//                       </thead>
-//                       <tbody>
-//                         {vendorRows.map((row, i) => (
-//                           <tr key={i}>
-//                             {Object.keys(row).map((field, idx) => (
-//                               <td key={idx}>
-//                                 <input
-//                                   className="form-control form-control-sm"
-//                                   value={row[field]}
-//                                   disabled={["productId", "product", "unit"].includes(field)}
-//                                   onChange={e =>
-//                                     handleChange(
-//                                       vendorRows,
-//                                       setVendorRows,
-//                                       i,
-//                                       field,
-//                                       e.target.value
-//                                     )
-//                                   }
-//                                 />
-//                               </td>
-//                             ))}
-//                           </tr>
-//                         ))}
-//                       </tbody>
-//                     </table>
-//                   </div>
-
-
-
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-//         )
-//         }
-//         {activeSubTab === "order" && (
-//           <div>
-//             {/* =========================
-//          ORDER SUMMARY TAB
-//       ========================== */}
-//             <div className="accordion-item">
-
-//               <div className="d-flex gap-2 mb-3">
-//                 <button
-//                   className="btn btn-danger"
-//                   onClick={() => setShowTakeOut(true)}
-//                 >
-//                   Take Out
-//                 </button>
-
-//                 <button
-//                   className="btn btn-success"
-//                   onClick={() => setShowBringIn(true)}
-//                 >
-//                   Bring In
-//                 </button>
-//               </div>
-
-
-//               <div id="orderSection" className="accordion-collapse collapse">
-//                 <div className="accordion-body">
-
-//                   <div id="orderSummaryPDF">
-//                     <div className="table-responsive">
-//                       <table className="table table-bordered table-sm">
-//                         <thead className="table-light">
-//                           <tr>
-//                             <th>Product ID</th>
-//                             <th>Product</th>
-//                             <th>Unit</th>
-//                             <th>Quantity</th>
-//                             <th>Price per unit</th>
-//                             <th>Total cost</th>
-//                             <th>Contact name</th>
-//                             <th>Contact Phone number</th>
-//                           </tr>
-//                         </thead>
-//                         <tbody>
-//                           {orderRows.map((row, i) => (
-//                             <tr key={i}>
-//                               {Object.keys(row).map((field, idx) => (
-//                                 <td key={idx}>
-//                                   <input
-//                                     className="form-control form-control-sm"
-//                                     value={row[field]}
-//                                     disabled={
-//                                       ["productId", "product", "unit", "totalCost"].includes(field)
-//                                     }
-//                                     onChange={e =>
-//                                       handleChange(
-//                                         orderRows,
-//                                         setOrderRows,
-//                                         i,
-//                                         field,
-//                                         e.target.value
-//                                       )
-//                                     }
-//                                   />
-//                                 </td>
-//                               ))}
-//                             </tr>
-//                           ))}
-//                         </tbody>
-//                       </table>
-//                     </div>
-//                   </div>
-
-//                   <button
-//                     className="btn btn-success"
-//                     onClick={exportPDF}
-//                   >
-//                     Export PDF
-//                   </button>
-
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-//         )}
-
-//       </div>
-//       {(showTakeOut || showBringIn) && (
-//         <div className="card p-3 mb-3">
-//           <h5>{showTakeOut ? "Take Out Stock" : "Bring In Stock"}</h5>
-
-//           <input
-//             className="form-control mb-2"
-//             placeholder="Product ID"
-//             onChange={e => setMovementForm(prev => ({ ...prev, productId: e.target.value }))}
-//           />
-
-//           <input
-//             className="form-control mb-2"
-//             placeholder="Quantity"
-//             type="number"
-//             onChange={e => setMovementForm(prev => ({ ...prev, qty: e.target.value }))}
-//           />
-
-//           {showTakeOut && (
-//             <input
-//               className="form-control mb-2"
-//               placeholder="Destination (site or project name)"
-//               onChange={e => setMovementForm(prev => ({ ...prev, destination: e.target.value }))}
-//             />
-//           )}
-
-//           <button
-//             className="btn btn-primary me-2"
-//             onClick={showTakeOut ? handleTakeOut : handleBringIn}
-//           >
-//             Submit
-//           </button>
-
-//           <button
-//             className="btn btn-secondary"
-//             onClick={() => {
-//               setShowTakeOut(false);
-//               setShowBringIn(false);
-//             }}
-//           >
-//             Cancel
-//           </button>
-//         </div>
-//       )}
-//     </div>
-//   </div>
-// );
-

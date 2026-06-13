@@ -11,7 +11,7 @@ import "./leads.css";
 import { getRolesForSelector } from "../../config/roleAccess";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { useAuth } from "../../contexts/AuthContext";
-import LeadsFileUpload from "./LeadsFileUpload";
+import UploadPage from "./LeadsFileUpload";
 import { db } from "../../firebase/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 
@@ -22,8 +22,7 @@ function cleanData(data) {
 }
 
 export default function LeadsList() {
-  const { companyId, user } = useAuth();
-
+  const { companyId, user, role, displayName } = useAuth();
   const [leads, setLeads] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
@@ -111,14 +110,28 @@ export default function LeadsList() {
         return;
       }
 
+      /* ---------------- CHECK DUPLICATE PROJECT ---------------- */
+      const projectExists = leads.some((lead) => {
+        // ignore current record when editing
+        if (editingId && lead.id === editingId) return false;
+
+        return (
+          lead.projectName?.trim().toLowerCase() ===
+          formData.projectName.trim().toLowerCase()
+        );
+      });
+
+      if (projectExists) {
+        alert("Project name already exists");
+        return;
+      }
+
       const creatorName = staffNameMap[user.uid] || "Unknown User";
 
-      // Clean formData BEFORE sending it to Firestore
-      const cleanedFormData = {
-        ...cleanData(formData),
-        staffAssigned: staffAssignedIds, // store IDs, not names
-
-      };
+      const cleanedFormData = deepClean({
+        ...formData,
+        staffAssigned: staffAssignedIds,
+      });
 
       // 👇 ADD THIS (only on create)
       if (!editingId) {
@@ -141,10 +154,19 @@ export default function LeadsList() {
           alert("Company ID not loaded yet");
           return;
         }
-
+        console.log(
+          "FILES:",
+          JSON.stringify(formData.fileUpload, null, 2)
+        );
+        console.log("FORM DATA", formData);
+        console.log(
+          "FINAL LEAD DATA",
+          JSON.stringify(cleanedFormData, null, 2)
+        );
         const docRef = await addLead(companyId, cleanedFormData);
         leadId = docRef.id;
       }
+
 
       try {
         if (companyId && user && staffAssignedIds.length > 0) {
@@ -190,6 +212,23 @@ export default function LeadsList() {
     }
   };
 
+  function deepClean(obj) {
+    if (Array.isArray(obj)) {
+      return obj
+        .map(deepClean)
+        .filter(v => v !== undefined);
+    }
+
+    if (obj && typeof obj === "object") {
+      return Object.fromEntries(
+        Object.entries(obj)
+          .filter(([_, v]) => v !== undefined)
+          .map(([k, v]) => [k, deepClean(v)])
+      );
+    }
+
+    return obj;
+  }
 
   // Edit lead
   const handleEdit = (lead) => {
@@ -221,6 +260,17 @@ export default function LeadsList() {
       .join(", ");
   };
 
+  const canModifyLead = (lead) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = lead.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
+
   if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
@@ -231,7 +281,7 @@ export default function LeadsList() {
       </div>
     );
   }
-  
+
   return (
     <div className="leads-container">
       <div className="leads-header">Company Leads</div>
@@ -260,7 +310,7 @@ export default function LeadsList() {
           </div>
           <div style={{ flex: 1 }}>
             <label>Upload Files</label>
-            <LeadsFileUpload
+            <UploadPage
               uploadedFiles={formData.fileUpload}
               onFilesChange={(files) => {
                 setFormData((prev) => {
@@ -322,66 +372,102 @@ export default function LeadsList() {
           </tr>
         </thead>
         <tbody>
-          {leads.length ? leads.map(lead => (
-            <tr key={lead.id}>
-              <td>{lead.createdBy?.name || "--"}</td>
-              <td>{lead.projectName}</td>
-              <td>{lead.clientName}</td>
-              <td>{lead.email}</td>
-              <td>{lead.phone}</td>
-              <td>{lead.service}</td>
-              <td>
-                {Array.isArray(lead.fileUpload) && lead.fileUpload.length ? (
-                  <ul style={{ paddingLeft: 16 }}>
-                    {lead.fileUpload.map(f => (
-                      <li key={f.fileId}>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#1976d2",
-                            cursor: "pointer",
-                            textDecoration: "underline"
-                          }}
-                          onClick={async () => {
-                            const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                            const token = tokens?.access_token;
+          {leads.length ? leads.map(lead => {
+            const allowed = canModifyLead(lead);
+            return (
+              <tr key={lead.id}>
+                <td>{lead.createdBy?.name || "--"}</td>
+                <td>{lead.projectName}</td>
+                <td>{lead.clientName}</td>
+                <td>{lead.email}</td>
+                <td>{lead.phone}</td>
+                <td>{lead.service}</td>
+                <td>
+                  {Array.isArray(lead.fileUpload) && lead.fileUpload.length ? (
+                    <ul style={{ paddingLeft: 16 }}>
+                      {lead.fileUpload.map(f => (
+                        <li key={f.fileId}>
+                          <button
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#1976d2",
+                              cursor: "pointer",
+                              textDecoration: "underline"
+                            }}
+                            // onClick={async () => {
+                            //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+                            //   const token = tokens?.access_token;
 
-                            if (!token) {
-                              alert("You must login first");
-                              return;
-                            }
+                            //   if (!token) {
+                            //     alert("You must login first, from Leads Page");
+                            //     return;
+                            //   }
 
-                            const result = await window.electron.downloadFile(f.fileId, token, f.name)
+                            //   const result = await window.electron.downloadFile(f.fileId, null, f.name)
 
-                            if (!result?.success) {
-                              alert("Download failed");
-                            }
-                          }}
-                        >
-                          ⬇ {f.name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : "--"}
-              </td>
-              <td>
-                {(lead.staffAssigned || [])
-                  .map((uid) => staffNameMap[uid] || uid)
-                  .join(", ")}
-              </td>
+                            //   if (!result?.success) {
+                            //     alert("Download failed");
+                            //   }
+                            // }}
+                            onClick={async () => {
+                              const result = await window.electron.downloadFile(
+                                f.fileId,
+                                null,
+                                f.name
+                              );
+
+                              if (!result?.success) {
+                                alert("Download failed");
+                              }
+                            }}
+                          >
+                            ⬇ {f.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : "--"}
+                </td>
+                <td>
+                  {(lead.staffAssigned || [])
+                    .map((uid) => staffNameMap[uid] || uid)
+                    .join(", ")}
+                </td>
 
 
 
 
-              <td>{lead.createdAt ? new Date(lead.createdAt.seconds * 1000).toLocaleString() : "--"}</td>
-              <td>
-                <button className="btn-edit" onClick={() => handleEdit(lead)}>Edit</button>
-                <button className="btn-delete" onClick={() => handleDelete(lead.id)}>Delete</button>
-              </td>
-            </tr>
-          )) : (
+                <td>{lead.createdAt ? new Date(lead.createdAt.seconds * 1000).toLocaleString() : "--"}</td>
+                <td>
+
+                  <button
+                    className="btn-edit"
+                    onClick={() => allowed && handleEdit(lead)}
+                    disabled={!allowed}
+                    style={{
+                      opacity: allowed ? 1 : 0.5,
+                      cursor: allowed ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    className="btn-delete"
+                    onClick={() => allowed && handleDelete(lead.id)}
+                    disabled={!allowed}
+                    style={{
+                      opacity: allowed ? 1 : 0.5,
+                      cursor: allowed ? "pointer" : "not-allowed"
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            );
+          }) : (
             <tr>
               <td colSpan="9" style={{ textAlign: "center", padding: 20 }}>No leads yet.</td>
             </tr>

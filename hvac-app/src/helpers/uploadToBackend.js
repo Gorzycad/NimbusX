@@ -1,3 +1,4 @@
+// src/helpers/uploadToBackend.js
 import axios from "axios";
 
 export async function uploadToBackend(file) {

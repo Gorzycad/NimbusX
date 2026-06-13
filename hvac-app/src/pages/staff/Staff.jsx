@@ -2,22 +2,84 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "../../firebase/firebase";
+import { db, auth } from "../../firebase/firebase";
+
 import { Table, Button } from "react-bootstrap";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { fetchStaff, deleteStaff } from "../../firebase/staffService";
+import { deleteStaff } from "../../firebase/staffService";
 import {
   deleteDoc,
+  updateDoc,
   setDoc,
   addDoc,
   serverTimestamp
 } from "firebase/firestore";
-import { usePaystackPayment } from "react-paystack";
-import LeadsFileUpload from "../leads/LeadsFileUpload";
+
+import { ALL_PAGES, ROLE_ACCESS } from "../../config/roleAccess";
+import {
+  getAppSettings
+} from "../../firebase/appSettingsService";
+import UploadPage from "../leads/LeadsFileUpload";
 
 function StaffManager({ staffList, setStaffList, companyId }) {
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [editingNames, setEditingNames] = useState({});
+  const togglePermission = async (page) => {
+
+    if (!selectedStaff) return;
+
+    try {
+
+      const currentPermissions =
+        selectedStaff.customPermissions || {};
+
+      const updatedPermissions = {
+        ...currentPermissions,
+        [page]: !(
+          currentPermissions[page] ??
+          ROLE_ACCESS[selectedStaff.role]?.includes(page)
+        )
+      };
+
+      // company user
+      await updateDoc(
+        doc(db, "companies", companyId, "users", selectedStaff.id),
+        {
+          customPermissions: updatedPermissions
+        }
+      );
+
+      // global user
+      await updateDoc(
+        doc(db, "users", selectedStaff.id),
+        {
+          customPermissions: updatedPermissions
+        }
+      );
+
+      const updatedStaff = {
+        ...selectedStaff,
+        customPermissions: updatedPermissions
+      };
+
+      setSelectedStaff(updatedStaff);
+
+      setStaffList(prev =>
+        prev.map(s =>
+          s.id === selectedStaff.id
+            ? updatedStaff
+            : s
+        )
+      );
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update permissions");
+    }
+  };
+
   const handleDelete = async (staffId) => {
     const confirmed = window.confirm("Are you sure you want to delete this staff?");
     if (!confirmed) return;
@@ -32,6 +94,75 @@ function StaffManager({ staffList, setStaffList, companyId }) {
     }
   };
 
+  const toggleStatus = async (staff) => {
+    try {
+      const ref = doc(db, "companies", companyId, "users", staff.id);
+
+      const newStatus = !(staff.active !== false);
+
+      await updateDoc(ref, {
+        active: newStatus
+      });
+
+      setStaffList(prev =>
+        prev.map(s =>
+          s.id === staff.id ? { ...s, active: newStatus } : s
+        )
+      );
+
+    } catch (err) {
+      console.error("Status update error:", err);
+    }
+  };
+  const saveName = async (staffId) => {
+    try {
+      const edited = editingNames[staffId];
+
+      if (!edited) return;
+
+      const firstName = edited.firstName || "";
+      const lastName = edited.lastName || "";
+
+      // Update company user
+      await updateDoc(
+        doc(db, "companies", companyId, "users", staffId),
+        {
+          firstName,
+          lastName,
+        }
+      );
+
+      // Update global user
+      await updateDoc(
+        doc(db, "users", staffId),
+        {
+          firstName,
+          lastName,
+        }
+      );
+
+
+      // Update local UI state
+      setStaffList(prev =>
+        prev.map(s =>
+          s.id === staffId
+            ? {
+              ...s,
+              firstName,
+              lastName,
+            }
+            : s
+        )
+      );
+
+      alert("Name updated successfully");
+
+    } catch (err) {
+      console.error("Name update error:", err);
+      alert("Failed to update name");
+    }
+  };
+
   return (
     <div style={{ overflowX: "auto" }}>
       <Table bordered striped hover>
@@ -41,6 +172,7 @@ function StaffManager({ staffList, setStaffList, companyId }) {
             <th>First Name</th>
             <th>Last Name</th>
             <th>Role</th>
+            <th>Status</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -48,10 +180,74 @@ function StaffManager({ staffList, setStaffList, companyId }) {
           {staffList.map((staff, index) => (
             <tr key={staff.id}>
               <td>{index + 1}</td>
-              <td>{staff.firstName}</td>
-              <td>{staff.lastName}</td>
+              <td>
+                <input
+                  value={
+                    editingNames[staff.id]?.firstName ??
+                    staff.firstName ??
+                    ""
+                  }
+                  onChange={(e) =>
+                    setEditingNames(prev => ({
+                      ...prev,
+                      [staff.id]: {
+                        ...prev[staff.id],
+                        firstName: e.target.value,
+                        lastName:
+                          prev[staff.id]?.lastName ??
+                          staff.lastName ??
+                          "",
+                      },
+                    }))
+                  }
+                />
+              </td>
+
+              <td>
+                <input
+                  value={
+                    editingNames[staff.id]?.lastName ??
+                    staff.lastName ??
+                    ""
+                  }
+                  onChange={(e) =>
+                    setEditingNames(prev => ({
+                      ...prev,
+                      [staff.id]: {
+                        ...prev[staff.id],
+                        lastName: e.target.value,
+                        firstName:
+                          prev[staff.id]?.firstName ??
+                          staff.firstName ??
+                          "",
+                      },
+                    }))
+                  }
+                />
+              </td>
               <td>{staff.role}</td>
               <td>
+                <div className="form-check form-switch">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    checked={staff.active !== false}
+                    onChange={() => toggleStatus(staff)}
+                  />
+                  <label style={{ marginLeft: 8 }}>
+                    {staff.active !== false ? "Active" : "Inactive"}
+                  </label>
+                </div>
+              </td>
+              <td style={{ display: "flex", gap: 8 }}>
+                <Button
+                  variant="success"
+                  size="sm"
+                  onClick={() => saveName(staff.id)}
+                >
+                  Save
+                </Button>
+
                 <Button
                   variant="danger"
                   size="sm"
@@ -64,6 +260,94 @@ function StaffManager({ staffList, setStaffList, companyId }) {
           ))}
         </tbody>
       </Table>
+
+      {/* 🔥 PERMISSIONS SECTION */}
+
+      <div
+        style={{
+          marginTop: 30,
+          padding: 20,
+          border: "1px solid #ddd",
+          borderRadius: 10,
+          background: "#fafafa"
+        }}
+      >
+
+        <h4>Staff Permissions</h4>
+
+        <select
+          className="form-control"
+          style={{ maxWidth: 400 }}
+          value={selectedStaff?.id || ""}
+          onChange={(e) => {
+
+            const found = staffList.find(
+              s => s.id === e.target.value
+            );
+
+            setSelectedStaff(found || null);
+          }}
+        >
+          <option value="">Select Staff</option>
+
+          {staffList.map(staff => (
+            <option key={staff.id} value={staff.id}>
+              {staff.firstName} {staff.lastName}
+            </option>
+          ))}
+        </select>
+
+        {selectedStaff && (
+          <div style={{ marginTop: 20 }}>
+
+            <h5>
+              Permissions for:
+              {" "}
+              {selectedStaff.firstName}
+              {" "}
+              {selectedStaff.lastName}
+            </h5>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))",
+                gap: 10,
+                marginTop: 15
+              }}
+            >
+
+              {ALL_PAGES.map(page => {
+
+                const checked =
+                  selectedStaff.customPermissions?.[page] ??
+                  ROLE_ACCESS[selectedStaff.role]?.includes(page);
+
+                return (
+                  <label
+                    key={page}
+                    style={{
+                      border: "1px solid #ddd",
+                      padding: 10,
+                      borderRadius: 8,
+                      background: "#fff"
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePermission(page)}
+                      style={{ marginRight: 8 }}
+                    />
+
+                    {page}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -74,20 +358,37 @@ export default function Staff() {
   const [attendance, setAttendance] = useState({});
   const [daysInMonth, setDaysInMonth] = useState(31);
   const [activeView, setActiveView] = useState("attendance");
-  //const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [monthlyFee, setMonthlyFee] = useState(26050);
 
   // "attendance" | "subscription"
   const [companyName, setCompanyName] = useState("");
-  const [logoFiles, setLogoFiles] = useState([]);
+  const [logoFile, setLogoFile] = useState([]);
+  useEffect(() => {
+
+    const loadSettings = async () => {
+
+      const settings =
+        await getAppSettings();
+
+      setMonthlyFee(
+        Number(settings.monthlyFee || 26050)
+      );
+
+    };
+
+    loadSettings();
+
+  }, []);
+
 
   const handleLogoUpload = async () => {
-    if (!logoFiles.length) {
+    if (!logoFile.length) {
       alert("Please upload a logo first");
       return;
     }
 
-    const logo = logoFiles[0];
+    const logo = logoFile[0];
 
     if (!logo?.fileId) {
       alert("Invalid file. Please upload again.");
@@ -95,17 +396,18 @@ export default function Staff() {
     }
 
     try {
+      console.log("Saving logo:", logo);
       await setDoc(
         doc(db, "companies", companyId),
         {
           companyLogo: {
-            fileId: logo.fileId || null,
+            fileId: logo.fileId,
             name: logo.name || "",
           },
         },
         { merge: true }
       );
-
+      
       alert("Logo saved successfully!");
     } catch (err) {
       console.error("Logo save error:", err);
@@ -191,7 +493,6 @@ export default function Staff() {
     loadCompany();
   }, [companyId]);
 
-
   /* ---------------- LOAD ATTENDANCE ---------------- */
   useEffect(() => {
     if (!companyId) return;
@@ -223,58 +524,22 @@ export default function Staff() {
     };
 
     if (staffList.length) loadAttendance();
-  }, [companyId, staffList, year, month, now.getMonth()]);
+  }, [companyId, staffList, year, month]);
 
-  const monthlyFee = 25000;
-  const numberOfUsers = staffList.length;
+  const numberOfUsers = staffList.filter(s => s.active !== false).length;
   const totalDue = monthlyFee * numberOfUsers;
 
-  // const config = {
-  //   reference: "SUB_" + Date.now(),
-  //   email: user?.email,
-  //   amount: totalDue * 100,
-  //   //publicKey: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
-  //   key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
-  // };
 
-  //const initializePayment = usePaystackPayment(config);
 
   const handleSubscriptionPayment = () => {
-    // initializePayment(
-    //   async (response) => {
-    //     console.log("✅ Subscription Payment Success:", response);
-
-    //     try {
-    //       await addDoc(
-    //         collection(db, "companies", companyId, "subscriptions"),
-    //         {
-    //           subscriptionAmount: totalDue,
-    //           createdAt: serverTimestamp(),
-    //           paymentRef: response.reference,
-    //           month: month,
-    //           year: year,
-    //           companyName: companyName,
-    //         }
-    //       );
-
-    //       alert("Subscription payment successful!");
-    //     } catch (err) {
-    //       console.error("🔥 Error saving subscription:", err);
-    //       alert("Payment succeeded but saving failed.");
-    //     }
-    //   },
-    //   () => {
-    //     console.log("❌ Payment closed");
-    //   }
-    // );
 
     payWithPaystack(
       {
         reference: "SUB_" + Date.now(),
         email: user?.email,
-        amount: totalDue * 100,
-        //key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
-        key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
+        amount: Math.ceil(outstanding) * 100,
+        key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
+        //key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
         type: "subscription",
       },
       async (response) => {
@@ -282,7 +547,8 @@ export default function Staff() {
         await addDoc(
           collection(db, "companies", companyId, "subscriptions"),
           {
-            subscriptionAmount: totalDue,
+            // 🔥 SAVE ACTUAL PAID AMOUNT
+            subscriptionAmount: Math.ceil(outstanding),
             createdAt: serverTimestamp(),
             paymentRef: response.reference,
             month: month,
@@ -290,6 +556,33 @@ export default function Staff() {
             companyName: companyName,
           }
         );
+
+        const batchUpdates = pendingUsers.flatMap((user) => [
+          setDoc(
+            doc(db, "companies", companyId, "users", user.id),
+            {
+              billingStatus: "paid",
+              subscriptionPhase: "active",
+              accessEnabled: true,
+              lastBillingReset: serverTimestamp(),
+            },
+            { merge: true }
+          ),
+
+          setDoc(
+            doc(db, "users", user.id),
+            {
+              billingStatus: "paid",
+              subscriptionPhase: "active",
+              accessEnabled: true,
+              lastBillingReset: serverTimestamp(),
+            },
+            { merge: true }
+          )
+        ]);
+
+        await Promise.all(batchUpdates);
+        alert("Subscription payment successful!");
       }
     );
   };
@@ -408,30 +701,44 @@ export default function Staff() {
     );
   }
 
+  // 🔥 BILLING CALCULATIONS
+  const today = new Date();
+  const totalDaysInMonth = new Date(year, today.getMonth() + 1, 0).getDate();
+  const currentDay = today.getDate();
+
+  // Filter ONLY active employees
+  const activeStaff = staffList.filter(
+    (s) => s.employmentStatus !== "resigned"
+  );
+
+  // Split by billing status
+  const paidUsers = activeStaff.filter((s) => s.billingStatus === "paid");
+  const pendingUsers = activeStaff.filter((s) => s.billingStatus === "pending");
+
+  // 🔢 COUNTS
+  const activeUsersCount = paidUsers.length;
+  const pendingUsersCount = pendingUsers.length;
+
+  // 💰 TOTAL PAID (FULL USERS ONLY)
+  const totalPaid = activeUsersCount * monthlyFee;
+
+  // 💰 OUTSTANDING (PRORATED)
+  const outstanding = pendingUsers.reduce((sum, user) => {
+    if (!user.joinedAt?.toDate) return sum;
+
+    const joinedDate = user.joinedAt.toDate();
+    const joinedDay = joinedDate.getDate();
+
+    const remainingDays = totalDaysInMonth - joinedDay + 1;
+
+    const proratedAmount =
+      (remainingDays / totalDaysInMonth) * monthlyFee;
+
+    return sum + proratedAmount;
+  }, 0);
+
   return (
     <div style={{ padding: 20 }}>
-      {/* <h3>Staff Attendance – {monthLabel}</h3> */}
-      {/* <div className="d-flex gap-3 mb-3">
-        <h3
-          style={{
-            cursor: "pointer",
-            color: activeView === "attendance" ? "#0d6efd" : "#555",
-          }}
-          onClick={() => setActiveView("attendance")}
-        >
-          Staff Attendance – {monthLabel}
-        </h3>
-
-        <h3
-          style={{
-            cursor: "pointer",
-            color: activeView === "subscription" ? "#0d6efd" : "#555",
-          }}
-          onClick={() => setActiveView("subscription")}
-        >
-          Staff Subscription
-        </h3>
-      </div> */}
       <div className="d-flex gap-3 mb-3">
         <h3
           onClick={() => setActiveView("attendance")}
@@ -536,7 +843,7 @@ export default function Staff() {
               </thead>
 
               <tbody>
-                {staffList.map((staff, index) => (
+                {staffList.filter(s => s.active !== false).map((staff, index) => (
                   <tr key={staff.id}>
                     <td>{index + 1}</td>
                     <td>{staff.firstName}</td>
@@ -572,60 +879,49 @@ export default function Staff() {
 
       {activeView === "subscription" && (
         <div style={{ overflowX: "auto" }}>
-          <Table bordered striped hover>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Company Name</th>
-                <th>Company ID</th>
-                <th>No of Users</th>
-                <th>Monthly Subscription</th>
-                <th>Total Amount Due</th>
-                <th>Month</th>
-                <th>Payment Receipt</th>
-                <th>Status</th>
-              </tr>
-            </thead>
+          <div
+            style={{
+              border: "1px solid #ddd",
+              borderRadius: 10,
+              padding: 20,
+              background: "#fafafa",
+              maxWidth: 600,
+            }}
+          >
+            <h3 style={{ marginBottom: 20 }}>Current Plan Overview</h3>
 
-            <tbody>
-              {months.map((month, index) => (
-                <tr key={month}>
-                  <td>{index + 1}</td>
-                  <td>{companyName}</td>
-                  <td>{companyId}</td>
-                  <td>{numberOfUsers}</td>
-                  <td>₦{monthlyFee.toLocaleString()}</td>
-                  <td>₦{totalDue.toLocaleString()}</td>
-                  <td>{month}</td>
+            <p><strong>Plan:</strong> Per User Monthly</p>
+            <p><strong>Price:</strong> ₦{monthlyFee.toLocaleString()} / user</p>
+            <p>
+              <strong>Billing Cycle:</strong>{" "}
+              {months[today.getMonth()]} 1 – {months[today.getMonth()]} {totalDaysInMonth}
+            </p>
 
-                  {/* Upload receipt */}
-                  {/* <td>
-                    <input type="file" className="form-control form-control-sm" />
-                  </td> */}
-                  <td>
-                    <Button
-                      size="sm"
-                      variant="success"
-                      onClick={handleSubscriptionPayment}
-                    >
-                      Pay Now
-                    </Button>
-                  </td>
+            <hr />
 
-                  {/* Status toggle */}
-                  <td className="text-center">
-                    <div className="form-check form-switch d-flex justify-content-center">
-                      <input
-                        className="form-check-input"
-                        type="checkbox"
-                        disabled={role !== "app_support"}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+            <p><strong>Active Users:</strong> {activeUsersCount}</p>
+            <p><strong>Pending Users:</strong> {pendingUsersCount}</p>
+
+            <p>
+              <strong>Total Paid:</strong> ₦{totalPaid.toLocaleString()}
+            </p>
+
+            <p style={{ color: "red" }}>
+              <strong>Outstanding:</strong> ₦{Math.ceil(outstanding).toLocaleString()}
+            </p>
+
+            {/* 🔥 PAY BUTTON */}
+            {pendingUsersCount > 0 && (
+              <Button
+                variant="danger"
+                style={{ marginTop: 20 }}
+                onClick={handleSubscriptionPayment}
+              >
+                Activate {pendingUsersCount} Users – Pay ₦
+                {Math.ceil(outstanding).toLocaleString()}
+              </Button>
+            )}
+          </div>
 
           {role !== "app_support" && (
             <p style={{ fontSize: 12, color: "#666" }}>
@@ -634,10 +930,6 @@ export default function Staff() {
           )}
         </div>
       )}
-
-
-
-
 
       {activeView === "staffManager" && role === "company_admin" ? (
         <>
@@ -651,12 +943,11 @@ export default function Staff() {
           }}>
             <h4>Company Logo</h4>
 
-            <LeadsFileUpload
-              uploadedFiles={logoFiles}
+            <UploadPage
+              uploadedFiles={logoFile}
               onFilesChange={(files) => {
-                // only keep ONE file (logo must be single)
-                const singleFile = files.slice(-1);
-                setLogoFiles(singleFile);
+                const single = files.slice(-1); // enforce single logo
+                setLogoFile(single);
               }}
             />
 

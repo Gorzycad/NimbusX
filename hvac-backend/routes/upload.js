@@ -1,4 +1,5 @@
 // hvac-backend/routes/upload.js
+import admin from "firebase-admin";
 import express from "express";
 import multer from "multer";
 import fs from "fs";
@@ -6,218 +7,107 @@ import path from "path";
 import os from "os";
 import { google } from "googleapis";
 
-const router = express.Router();
+export default function uploadRoute(CONFIG) {
+  const router = express.Router();
 
-// ✅ Safe uploads folder inside user's home directory
-const uploadsDir = path.join(os.homedir(), "hvacapp_uploads");
+  // ✅ Safe uploads folder inside user's home directory
+  const uploadsDir = path.join(os.homedir(), "hvacapp_uploads");
 
-// Ensure the folder exists
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Multer storage config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-
-const upload = multer({ storage });
-
-// Upload endpoint
-router.post("/", upload.single("file"), async (req, res) => {
-  try {
-    // ✅ Get token from headers instead of session
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    const token = authHeader.split(" ")[1]; // access_token
-    console.log("RECEIVED TOKEN:", token);
-    
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: token });
-
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
-
-    const response = await drive.files.create({
-      requestBody: { name: req.file.originalname },
-      media: {
-        mimeType: req.file.mimetype,
-        body: fs.createReadStream(req.file.path),
-      },
-      fields: "id, name, webViewLink, webContentLink",
-    });
-
-    // Remove local file after upload
-    fs.unlinkSync(req.file.path);
-
-    res.json({
-      fileId: response.data.id,
-      fileName: response.data.name,
-      //downloadLink: response.data.webViewLink,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  // Ensure the folder exists
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
   }
-});
 
-export default router;
+  // Multer storage config
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, uploadsDir),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  });
 
-// import express from "express";
-// import multer from "multer";
-// import fs from "fs";
-// import { google } from "googleapis";
+  const upload = multer({ storage });
 
-// const router = express.Router();
-// const upload = multer({ dest: "uploads/" });
+  router.post("/", upload.single("file"), async (req, res) => {
+    try {
+      const { uid } = req.body;
 
-// router.post("/", upload.single("file"), async (req, res) => {
-//   try {
-//     // ✅ Get token from headers instead of session
-//     const authHeader = req.headers.authorization;
-//     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-//       return res.status(401).json({ error: "Not authenticated" });
-//     }
+      if (!uid) {
+        return res.status(400).json({ error: "Missing user id" });
+      }
 
-//     const token = authHeader.split(" ")[1]; // access_token
+      console.log("UID RECEIVED:", req.body.uid);
+      const userSnap = await admin
+        .firestore()
+        .collection("users")
+        .doc(uid)
+        .get();
+      const userData = userSnap.data();
 
-//     const oauth2Client = new google.auth.OAuth2();
-//     oauth2Client.setCredentials({ access_token: token });
+      console.log("USER EXISTS:", userSnap.exists);
+      console.log("USER DATA:", userSnap.data());
 
-//     const drive = google.drive({ version: "v3", auth: oauth2Client });
+      const refreshToken = userData?.googleRefreshToken;
+      console.log("REFRESH TOKEN FOUND:", !!refreshToken);
 
-//     const response = await drive.files.create({
-//       requestBody: { name: req.file.originalname },
-//       media: {
-//         mimeType: req.file.mimetype,
-//         body: fs.createReadStream(req.file.path),
-//       },
-//       fields: "id, name, webViewLink, webContentLink",
-//     });
+      if (!refreshToken) {
+        return res.status(403).json({ error: "Google Drive not connected" });
+      }
 
-//     fs.unlinkSync(req.file.path);
+      const oauth2Client = new google.auth.OAuth2(
+        CONFIG.GOOGLE_CLIENT_ID,
+        CONFIG.GOOGLE_CLIENT_SECRET,
+        CONFIG.GOOGLE_REDIRECT_URI
+      );
 
-//     res.json({
-//       fileId: response.data.id,
-//       fileName: response.data.name,
-//       downloadLink: response.data.webViewLink,
-//     });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: err.message });
-//   }
-// });
+      oauth2Client.setCredentials({
+        refresh_token: refreshToken,
+      });
 
-// export default router;
+      const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-// // hvac-backend/routes/upload.js
-// import express from "express";
-// import multer from "multer";
-// import fs from "fs";
-// import path from "path";
-// import os from "os";
-// import { google } from "googleapis";
+      const response = await drive.files.create({
+        requestBody: {
+          name: req.file.originalname,
+        },
+        media: {
+          mimeType: req.file.mimetype,
+          body: fs.createReadStream(req.file.path),
+        },
+      });
 
-// const router = express.Router();
+      // ✅ THIS WAS MISSING
+      const fileId = response.data.id;
 
-// // Safe uploads folder inside user's home directory
-// const uploadsDir = path.join(os.homedir(), "hvacapp_uploads");
+      await drive.permissions.create({
+        fileId: fileId,
+        requestBody: {
+          role: "reader",
+          type: "anyone",
+        },
+      });
 
-// // Ensure the folder exists
-// if (!fs.existsSync(uploadsDir)) {
-//   fs.mkdirSync(uploadsDir, { recursive: true });
-// }
+      fs.unlinkSync(req.file.path);
 
-// // Multer storage config
-// const storage = multer.diskStorage({
-//   destination: (req, file, cb) => cb(null, uploadsDir),
-//   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-// });
+      return res.json({
+        fileId: response.data.id,
+        fileName: response.data.name,
+      });
 
-// const upload = multer({ storage });
+    } 
+    //catch (err) {
+    //   console.error("UPLOAD ERROR:", err.message);
+    //   return res.status(500).json({ error: err.message });
+    // }
+    catch (err) {
+    console.error("UPLOAD ROUTE ERROR:");
+    console.error(err);
+    console.error(err.response?.data);
 
-// router.post("/", upload.single("file"), async (req, res) => {
-//   try {
-//     if (!req.session.googleTokens) {
-//       return res.status(401).json({ error: "Not authenticated" });
-//     }
+    res.status(500).json({
+      error: err.message,
+      details: err.response?.data || null,
+    });
+  }
+  });
 
-//     const oauth2Client = new google.auth.OAuth2();
-//     oauth2Client.setCredentials(req.session.googleTokens);
-
-//     const drive = google.drive({ version: "v3", auth: oauth2Client });
-
-//     const response = await drive.files.create({
-//       requestBody: {
-//         name: req.file.originalname,
-//       },
-//       media: {
-//         mimeType: req.file.mimetype,
-//         body: fs.createReadStream(req.file.path),
-//       },
-//       fields: "id, name, webViewLink, webContentLink",
-//     });
-
-//     // Remove local file after upload
-//     fs.unlinkSync(req.file.path);
-
-//     res.json({
-//       fileId: response.data.id,
-//       fileName: response.data.name,
-//       downloadLink: response.data.webViewLink,
-//     });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
-// export default router;
-
-// import express from "express";
-// import multer from "multer";
-// import fs from "fs";
-// import { google } from "googleapis";
-
-// const router = express.Router();
-// const upload = multer({ dest: "uploads/" });
-
-// router.post("/", upload.single("file"), async (req, res) => {
-//   try {
-//     if (!req.session.googleTokens) {
-//       return res.status(401).json({ error: "Not authenticated" });
-//     }
-
-//     const oauth2Client = new google.auth.OAuth2();
-//     oauth2Client.setCredentials(req.session.googleTokens);
-
-//     const drive = google.drive({ version: "v3", auth: oauth2Client });
-
-//     const response = await drive.files.create({
-//       requestBody: {
-//         name: req.file.originalname,
-//       },
-//       media: {
-//         mimeType: req.file.mimetype,
-//         body: fs.createReadStream(req.file.path),
-//       },
-//       fields: "id, name, webViewLink, webContentLink",
-//     });
-
-//     fs.unlinkSync(req.file.path);
-
-//     res.json({
-//       fileId: response.data.id,
-//       fileName: response.data.name,
-//       downloadLink: response.data.webViewLink,
-//     });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
-// export default router;
+  return router;
+}

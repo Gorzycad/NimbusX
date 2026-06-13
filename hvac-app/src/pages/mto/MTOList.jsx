@@ -16,7 +16,7 @@ import { db } from "../../firebase/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
 export default function MtoPage() {
-  const { companyId, user } = useAuth();
+  const { companyId, user, role, displayName } = useAuth();
   const [projectList, setProjectList] = useState([]);
   const [mtos, setMtos] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -24,6 +24,7 @@ export default function MtoPage() {
   const [staffList, setStaffList] = useState([]);
 
   const [formData, setFormData] = useState({
+    title: "",
     projectName: "",
     staffAssigned: [],
     mechanical: [],
@@ -74,18 +75,22 @@ export default function MtoPage() {
 
       const latest = projectBoqs[0];
 
-      const stripRate = rows =>
+      const mapRows = rows =>
         (rows || []).map(r => ({
+          productId: r.productId || "",
           item: r.item || "",
           qty: r.qty || 0,
           unit: r.unit || "",
+          rate: r.rate || 0,
+          total:
+            Number(r.qty || 0) * Number(r.rate || 0),
         }));
 
       setFormData(p => ({
         ...p,
-        mechanical: stripRate(latest.mechanical),
-        electrical: stripRate(latest.electrical),
-        plumbing: stripRate(latest.plumbing),
+        mechanical: mapRows(latest.mechanical),
+        electrical: mapRows(latest.electrical),
+        plumbing: mapRows(latest.plumbing),
       }));
     };
 
@@ -151,12 +156,12 @@ export default function MtoPage() {
     });
   }
 
-  function addRow(section) {
-    updateField(section, [
-      ...formData[section],
-      { item: "", qty: 0, unit: "" },
-    ]);
-  }
+  // function addRow(section) {
+  //   updateField(section, [
+  //     ...formData[section],
+  //     { item: "", qty: 0, unit: "" },
+  //   ]);
+  // }
 
   function removeRow(section, idx) {
     const rows = formData[section].filter((_, i) => i !== idx);
@@ -227,6 +232,7 @@ export default function MtoPage() {
   function handleEdit(item) {
     setEditingId(item.id);
     setFormData({
+      title: item.title || "",
       projectName: item.projectName,
       staffAssigned: item.staffAssigned || [],
       mechanical: structuredClone(item.mechanical || []),
@@ -246,6 +252,14 @@ export default function MtoPage() {
 
   /* ---------------- RENDER SECTION ---------------- */
   function renderSection(section) {
+
+    const sectionSubtotal = formData[section].reduce(
+      (sum, row) =>
+        sum +
+        Number(row.qty || 0) * Number(row.rate || 0),
+      0
+    );
+
     return (
       <div className="mt-4">
         <h5 className="text-capitalize">{section} Takeoff</h5>
@@ -256,6 +270,8 @@ export default function MtoPage() {
               <th>Item</th>
               <th style={{ width: 100 }}>Qty</th>
               <th style={{ width: 120 }}>Unit</th>
+              <th style={{ width: 120 }}>Rate</th>
+              <th style={{ width: 150 }}>Total</th>
               <th style={{ width: 80 }}></th>
             </tr>
           </thead>
@@ -297,6 +313,27 @@ export default function MtoPage() {
                   />
                 </td>
 
+                <td>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={row.rate || 0}
+                    onChange={e =>
+                      updateField(
+                        `${section}[${idx}].rate`,
+                        Number(e.target.value)
+                      )
+                    }
+                  />
+                </td>
+
+                <td>
+                  {(
+                    Number(row.qty || 0) *
+                    Number(row.rate || 0)
+                  ).toLocaleString()}
+                </td>
+
                 <td className="text-center">
                   <button
                     className="btn btn-sm btn-danger"
@@ -307,20 +344,44 @@ export default function MtoPage() {
                 </td>
               </tr>
             ))}
+
+            <tr className="table-secondary fw-bold">
+              <td colSpan="4" className="text-end">
+                Sub Total
+              </td>
+
+              <td>
+                {sectionSubtotal.toLocaleString()}
+              </td>
+
+              <td></td>
+            </tr>
+
           </tbody>
         </table>
 
-        <button
+        {/* <button
           className="btn btn-success btn-sm"
           onClick={() => addRow(section)}
         >
           + Add Row
-        </button>
+        </button> */}
       </div>
     );
   }
-  
-   if (loading) {
+
+  const canModifyLead = (m) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = m.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
+
+  if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
         <div className="text-center">
@@ -339,6 +400,16 @@ export default function MtoPage() {
       <div className="card mb-4">
         <div className="card-body">
           <div className="row g-3">
+            <div className="col-md-4">
+              <label className="form-label">Title</label>
+              <input
+                className="form-control"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+              />
+            </div>
             <div className="col-md-4">
               <label className="form-label">Project</label>
               <select
@@ -394,6 +465,7 @@ export default function MtoPage() {
               <thead>
                 <tr>
                   <th>Created By</th>
+                  <th>Title</th>
                   <th>Project</th>
                   <th>Staff Assigned</th>
                   <th>Date</th>
@@ -402,40 +474,55 @@ export default function MtoPage() {
               </thead>
 
               <tbody>
-                {mtos.map(m => (
-                  <tr key={m.id}>
-                    <td>{m.createdBy?.name || "--"}</td>
-                    <td>{m.projectName}</td>
-                    <td>
-                      {(m.staffAssigned || [])
-                        .map(uid => staffNameMap[uid] || uid)
-                        .join(", ")}
-                    </td>
-                    <td>
-                      {m.createdAt
-                        ? new Date(
-                          m.createdAt.seconds
-                            ? m.createdAt.seconds * 1000
-                            : m.createdAt
-                        ).toLocaleString()
-                        : "--"}
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => handleEdit(m)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(m.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {mtos.map(m => {
+                  const allowed = canModifyLead(m);
+                  return (
+                    <tr key={m.id}>
+                      <td>{m.createdBy?.name || "--"}</td>
+                      <td>{m.title}</td>
+                      <td>{m.projectName}</td>
+                      <td>
+                        {(m.staffAssigned || [])
+                          .map(uid => staffNameMap[uid] || uid)
+                          .join(", ")}
+                      </td>
+                      <td>
+                        {m.createdAt
+                          ? new Date(
+                            m.createdAt.seconds
+                              ? m.createdAt.seconds * 1000
+                              : m.createdAt
+                          ).toLocaleString()
+                          : "--"}
+                      </td>
+                      <td>
+                        <button
+                          className="btn-edit"
+                          onClick={() => allowed && handleEdit(m)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          className="btn-delete"
+                          onClick={() => allowed && handleDelete(m.id)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

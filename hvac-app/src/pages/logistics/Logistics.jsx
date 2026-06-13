@@ -17,32 +17,32 @@ export default function Logistics() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  if (!companyId) return;
-  setLoading(true);
+    if (!companyId) return;
+    setLoading(true);
 
-  const loadData = async () => {
-    // LOAD DRIVERS
-    const driverData = await getDrivers(companyId);
-    setDrivers(driverData);
+    const loadData = async () => {
+      // LOAD DRIVERS
+      const driverData = await getDrivers(companyId);
+      setDrivers(driverData);
 
-    // LOAD CALENDAR ENTRIES
-    const entryData = await getEntries(companyId);
+      // LOAD CALENDAR ENTRIES
+      const entryData = await getEntries(companyId);
 
-    const formatted = {};
+      const formatted = {};
 
-    entryData.forEach((entry) => {
-      if (!formatted[entry.date]) {
-        formatted[entry.date] = [];
-      }
-      formatted[entry.date].push(entry);
-    });
+      entryData.forEach((entry) => {
+        if (!formatted[entry.date]) {
+          formatted[entry.date] = [];
+        }
+        formatted[entry.date].push(entry);
+      });
 
-    setEntries(formatted);
-    setLoading(false);
-  };
+      setEntries(formatted);
+      setLoading(false);
+    };
 
-  loadData();
-}, [companyId]);
+    loadData();
+  }, [companyId]);
 
   /* =======================
      DRIVERS TABLE STATE
@@ -84,18 +84,18 @@ export default function Logistics() {
   };
 
   const updateDriver = async (index, field, value) => {
-  const updated = [...drivers];
-  updated[index][field] = value;
-  setDrivers(updated);
+    const updated = [...drivers];
+    updated[index][field] = value;
+    setDrivers(updated);
 
-  const driver = updated[index];
+    const driver = updated[index];
 
-  try {
-    await updateDriverInDB(companyId, driver.id, driver);
-  } catch (err) {
-    console.error("Driver update failed:", err);
-  }
-};
+    try {
+      await updateDriverInDB(companyId, driver.id, driver);
+    } catch (err) {
+      console.error("Driver update failed:", err);
+    }
+  };
 
   /* =======================
      CALENDAR STATE
@@ -130,68 +130,68 @@ export default function Logistics() {
     `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
   const addEntry = async (day) => {
-  const key = dateKey(day);
+    const key = dateKey(day);
 
-  const newEntry = {
-    date: key,
-    title: "",
-    task: "",
-    staff: "",
+    const newEntry = {
+      date: key,
+      title: "",
+      task: "",
+      staff: "",
+    };
+
+    try {
+      const docRef = await addEntryToDB(companyId, newEntry);
+
+      setEntries((prev) => ({
+        ...prev,
+        [key]: [...(prev[key] || []), { id: docRef.id, ...newEntry }]
+      }));
+    } catch (err) {
+      console.error("Error adding entry:", err);
+    }
   };
 
-  try {
-    const docRef = await addEntryToDB(companyId, newEntry);
-
-    setEntries((prev) => ({
-      ...prev,
-      [key]: [...(prev[key] || []), { id: docRef.id, ...newEntry }]
-    }));
-  } catch (err) {
-    console.error("Error adding entry:", err);
-  }
-};
-
   const removeEntry = async (day, index) => {
-  const key = dateKey(day);
-  const entry = entries[key][index];
+    const key = dateKey(day);
+    const entry = entries[key][index];
 
-  try {
-    await deleteEntryFromDB(companyId, entry.id);
+    try {
+      await deleteEntryFromDB(companyId, entry.id);
 
-    setEntries((prev) => ({
-      ...prev,
-      [key]: prev[key].filter((_, i) => i !== index),
-    }));
-  } catch (err) {
-    console.error("Delete entry failed:", err);
-  }
-};
+      setEntries((prev) => ({
+        ...prev,
+        [key]: prev[key].filter((_, i) => i !== index),
+      }));
+    } catch (err) {
+      console.error("Delete entry failed:", err);
+    }
+  };
 
   const updateEntry = async (day, index, field, value) => {
-  const key = dateKey(day);
+    const key = dateKey(day);
 
-  const updated = [...entries[key]];
-  updated[index][field] = value;
+    const updated = [...entries[key]];
+    updated[index][field] = value;
 
-  setEntries((prev) => ({
-    ...prev,
-    [key]: updated,
-  }));
+    setEntries((prev) => ({
+      ...prev,
+      [key]: updated,
+    }));
 
-  const entry = updated[index];
+    const entry = updated[index];
 
-  try {
-    await updateEntryInDB(companyId, entry.id, entry);
-  } catch (err) {
-    console.error("Entry update failed:", err);
-  }
-};
+    try {
+      await updateEntryInDB(companyId, entry.id, entry);
+    } catch (err) {
+      console.error("Entry update failed:", err);
+    }
+  };
 
   const changeMonth = (dir) => {
     setCurrentMonth(new Date(year, month + dir, 1));
   };
 
-   if (loading) {
+  if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
         <div className="text-center">

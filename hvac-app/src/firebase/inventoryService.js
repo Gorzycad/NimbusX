@@ -1,3 +1,4 @@
+// src/firebase/inventoryService.js
 import {
   collection,
   addDoc,
@@ -53,21 +54,21 @@ export const saveInventoryTable = async (
   });
 
   // Add new
- rows
-  .filter(row =>
-  row.productId ||
-  row.product ||
-  row.qty ||
-  row.price
-) // important
-  .forEach(row => {
-    const newDoc = doc(colRef);
-    batch.set(newDoc, {
-      ...row,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+  rows
+    .filter(row =>
+      row.productId ||
+      row.product ||
+      row.qty ||
+      row.price
+    ) // important
+    .forEach(row => {
+      const newDoc = doc(colRef);
+      batch.set(newDoc, {
+        ...row,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     });
-  });
 
   await batch.commit();
 };

@@ -38,11 +38,12 @@ import {
   File, //use for Handover
 
 } from "lucide-react";
+import { getAllowedPages } from "../../helpers/getAllowedPages";
 
 export default function Sidebar() {
   const [version, setVersion] = useState("");
   const navigate = useNavigate();
-  const { user, role, logout } = useAuth();
+  const { user, role, logout, userData } = useAuth();
 
 
 
@@ -218,7 +219,11 @@ export default function Sidebar() {
 
   // Determine allowed pages for role
   const allPagesFlat = sections.flatMap((s) => s.pages);
-  const allowedPages = ROLE_ACCESS[normalizedRole]?.map(p => p.toLowerCase()) || [];
+  //const allowedPages = ROLE_ACCESS[normalizedRole]?.map(p => p.toLowerCase()) || [];
+  const allowedPages = getAllowedPages(
+    normalizedRole,
+    userData?.customPermissions
+  );
   const isSuperUser = ["ceo", "director"].includes(normalizedRole);
   const isDeveloper = ["developer"].includes(normalizedRole);
   console.log("Role:", normalizedRole);
@@ -269,7 +274,9 @@ export default function Sidebar() {
         >
           <UserCircle size={32} color="#007bff" />
           <div>
-            <strong>{user.displayName || "User"}</strong>
+            <strong>
+              {userData?.firstName || ""} {userData?.lastName || "User"}
+            </strong>
             <p style={{ fontSize: 12, color: "#444", margin: 0 }}>
               {formatRole(role)}
             </p>

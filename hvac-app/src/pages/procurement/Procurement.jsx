@@ -27,16 +27,15 @@ const emptyRow = () => ({
   Main Component
 -------------------------------- */
 export default function ProcurementPage() {
-  const { companyId, user } = useAuth();
-
+  const { companyId, user, role, displayName } = useAuth();
   const [activeTab, setActiveTab] = useState("requisition");
   const [staffList, setStaffList] = useState([]);
   const [records, setRecords] = useState([]);
   const [editingId, setEditingId] = useState(null);
 
   /* -----------------------------
-     Form States (per tab)
-  ----------------------------- */
+      Form States (per tab)
+  ------------------------------ */
   const [requisitionRows, setRequisitionRows] = useState([emptyRow()]);
   const [vendors, setVendors] = useState([]);
   const [staffItems, setStaffItems] = useState([]);
@@ -93,7 +92,8 @@ export default function ProcurementPage() {
 
   useEffect(() => {
     // Reset all tables when switching tabs
-    setRequisitionRows([emptyRow()]);
+    //setRequisitionRows([emptyRow()]);
+    setRequisitionRows([]);
     setVendors([]);
     setStaffItems([]);
     setContractors([]);
@@ -299,6 +299,16 @@ export default function ProcurementPage() {
     html2pdf().set(opt).from(element).save();
   };
 
+  const canModifyLead = (rec) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = rec.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
   if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
@@ -351,7 +361,7 @@ export default function ProcurementPage() {
                     <th>Item</th>
                     <th>Description</th>
                     <th width="120">Qty</th>
-                    <th width="80"></th>
+                    <th width="120">Delete</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -426,48 +436,82 @@ export default function ProcurementPage() {
             <table className="table table-sm table-bordered">
               <thead className="table-light">
                 <tr>
-                  <th>Date</th>
                   <th>Created By</th>
+                  <th>Staff Assigned</th>
                   <th>Items</th>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Date</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {records.map(rec => (
-                  <tr key={rec.id}>
-                    <td>
-                      {rec.createdAt?.toDate
-                        ? rec.createdAt.toDate().toLocaleString()
-                        : ""}
-                    </td>
-                    <td>{rec.createdBy?.name}</td>
+                {records.map(rec => {
+                  const allowed = canModifyLead(rec);
+                  return (
+                    <tr key={rec.id}>
+                      <td>{rec.createdBy?.name}</td>
+                      <td>
+                        {(rec.staffAssigned || [])
+                          .map((uid) => staffNameMap[uid] || uid)
+                          .join(", ")}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((r, i) => (
+                          <div key={i}>
+                            {r.item}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((r, i) => (
+                          <div key={i}>
+                            {r.description}
+                          </div>
+                        ))}
+                      </td>
 
-                    {/* ✅ DISPLAY DATA */}
-                    <td>
-                      {(rec.data || []).map((r, i) => (
-                        <div key={i}>
-                          {r.item} ({r.quantity})
-                        </div>
-                      ))}
-                    </td>
+                      {/* ✅ DISPLAY DATA */}
+                      <td>
+                        {(rec.data || []).map((r, i) => (
+                          <div key={i}>
+                            {r.quantity}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {rec.createdAt?.toDate
+                          ? rec.createdAt.toDate().toLocaleString()
+                          : ""}
+                      </td>
+                      <td>
+                        <button
+                          className="btn-edit"
+                          onClick={() => allowed && handleEdit(rec)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Edit
+                        </button>
 
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => handleEdit(rec)}
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(rec.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <button
+                          className="btn-delete"
+                          onClick={() => allowed && handleDelete(rec.id)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -486,16 +530,17 @@ export default function ProcurementPage() {
               <thead className="table-light">
                 <tr>
                   <th>Vendor Name</th>
-                  <th>Contact</th>
-                  <th>Email</th>
-                  <th>Payment Details</th>
-                  <th></th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th>Account Name</th>
+                  <th>Account Number</th>
+                  <th>Delete</th>
                 </tr>
               </thead>
               <tbody>
                 {vendors.map((v, i) => (
                   <tr key={i}>
-                    {["name", "contact", "email", "payment"].map(field => (
+                    {["name", "phone", "address", "acctname", "acctnumber"].map(field => (
                       <td key={field}>
                         <input
                           className="form-control"
@@ -537,46 +582,96 @@ export default function ProcurementPage() {
             <table className="table table-sm table-bordered">
               <thead className="table-light">
                 <tr>
-                  <th>Date</th>
                   <th>Created By</th>
-                  <th>Vendors</th>
+                  <th>Staff Assigned</th>
+                  <th>Vendor Name</th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th>Account Name</th>
+                  <th>Account Number</th>
+                  <th>Date</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {records.map(rec => (
-                  <tr key={rec.id}>
-                    <td>
-                      {rec.createdAt?.toDate
-                        ? rec.createdAt.toDate().toLocaleString()
-                        : ""}
-                    </td>
-                    <td>{rec.createdBy?.name}</td>
+                {records.map(rec => {
+                  const allowed = canModifyLead(rec);
+                  return (
+                    <tr key={rec.id}>
+                      <td>{rec.createdBy?.name}</td>
+                      <td>
+                        {(rec.staffAssigned || [])
+                          .map((uid) => staffNameMap[uid] || uid)
+                          .join(", ")}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((v, i) => (
+                          <div key={i}>
+                            {v.name}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((v, i) => (
+                          <div key={i}>
+                            {v.phone}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((v, i) => (
+                          <div key={i}>
+                            {v.address}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((v, i) => (
+                          <div key={i}>
+                            {v.acctname}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((v, i) => (
+                          <div key={i}>
+                            {v.acctnumber}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {rec.createdAt?.toDate
+                          ? rec.createdAt.toDate().toLocaleString()
+                          : ""}
+                      </td>
+                      <td>
+                        <button
+                          className="btn-edit"
+                          onClick={() => allowed && handleEdit(rec)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Edit
+                        </button>
 
-                    <td>
-                      {(rec.data || []).map((v, i) => (
-                        <div key={i}>
-                          {v.name} - {v.contact}
-                        </div>
-                      ))}
-                    </td>
-
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => handleEdit(rec)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(rec.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <button
+                          className="btn-delete"
+                          onClick={() => allowed && handleDelete(rec.id)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -594,10 +689,10 @@ export default function ProcurementPage() {
             <table className="table table-bordered">
               <thead className="table-light">
                 <tr>
-                  <th>Staff</th>
+                  <th>Staff/Recepient</th>
                   <th>Item</th>
                   <th>Date Assigned</th>
-                  <th></th>
+                  <th>Delete</th>
                 </tr>
               </thead>
               <tbody>
@@ -668,46 +763,72 @@ export default function ProcurementPage() {
             <table className="table table-sm table-bordered">
               <thead className="table-light">
                 <tr>
-                  <th>Date</th>
                   <th>Created By</th>
-                  <th>Assignments</th>
+                  <th>Staff Assigned</th>
+                  <th>Staff/Recepient</th>
+                  <th>Items Assigned</th>
+                  <th>Date</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {records.map(rec => (
-                  <tr key={rec.id}>
-                    <td>
-                      {rec.createdAt?.toDate
-                        ? rec.createdAt.toDate().toLocaleString()
-                        : ""}
-                    </td>
-                    <td>{rec.createdBy?.name}</td>
+                {records.map(rec => {
+                  const allowed = canModifyLead(rec);
+                  return (
+                    <tr key={rec.id}>
+                      <td>{rec.createdBy?.name}</td>
+                      <td>
+                        {(rec.staffAssigned || [])
+                          .map((uid) => staffNameMap[uid] || uid)
+                          .join(", ")}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((r, i) => (
+                          <div key={i}>
+                            {r.staff}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((r, i) => (
+                          <div key={i}>
+                            {r.item}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {rec.createdAt?.toDate
+                          ? rec.createdAt.toDate().toLocaleString()
+                          : ""}
+                      </td>
+                      <td>
+                        <button
+                          className="btn-edit"
+                          onClick={() => allowed && handleEdit(rec)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Edit
+                        </button>
 
-                    <td>
-                      {(rec.data || []).map((r, i) => (
-                        <div key={i}>
-                          {r.staff} → {r.item}
-                        </div>
-                      ))}
-                    </td>
-
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => handleEdit(rec)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(rec.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <button
+                          className="btn-delete"
+                          onClick={() => allowed && handleDelete(rec.id)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -726,16 +847,16 @@ export default function ProcurementPage() {
               <thead className="table-light">
                 <tr>
                   <th>Company</th>
-                  <th>Service</th>
-                  <th>Contact</th>
+                  <th>Service Rendered</th>
+                  <th>Phone</th>
                   <th>Last Visit</th>
-                  <th></th>
+                  <th>Delete</th>
                 </tr>
               </thead>
               <tbody>
                 {contractors.map((c, i) => (
                   <tr key={i}>
-                    {["company", "service", "contact", "date"].map(field => (
+                    {["company", "service", "phone", "date"].map(field => (
                       <td key={field}>
                         <input
                           type={field === "date" ? "date" : "text"}
@@ -778,46 +899,88 @@ export default function ProcurementPage() {
             <table className="table table-sm table-bordered">
               <thead className="table-light">
                 <tr>
-                  <th>Date</th>
                   <th>Created By</th>
+                  <th>Staff Assigned</th>
                   <th>Contractors</th>
+                  <th>Service Rendered</th>
+                  <th>Phone</th>
+                  <th>Last Visit</th>
+                  <th>Date</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {records.map(rec => (
-                  <tr key={rec.id}>
-                    <td>
-                      {rec.createdAt?.toDate
-                        ? rec.createdAt.toDate().toLocaleString()
-                        : ""}
-                    </td>
-                    <td>{rec.createdBy?.name}</td>
+                {records.map(rec => {
+                  const allowed = canModifyLead(rec);
+                  return (
+                    <tr key={rec.id}>
+                      <td>{rec.createdBy?.name}</td>
+                      <td>
+                        {(rec.staffAssigned || [])
+                          .map((uid) => staffNameMap[uid] || uid)
+                          .join(", ")}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((c, i) => (
+                          <div key={i}>
+                            {c.company}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((c, i) => (
+                          <div key={i}>
+                            {c.service}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((c, i) => (
+                          <div key={i}>
+                            {c.phone}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {(rec.data || []).map((c, i) => (
+                          <div key={i}>
+                            {c.date}
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        {rec.createdAt?.toDate
+                          ? rec.createdAt.toDate().toLocaleString()
+                          : ""}
+                      </td>
+                      <td>
+                        <button
+                          className="btn-edit"
+                          onClick={() => allowed && handleEdit(rec)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Edit
+                        </button>
 
-                    <td>
-                      {(rec.data || []).map((c, i) => (
-                        <div key={i}>
-                          {c.company} - {c.service}
-                        </div>
-                      ))}
-                    </td>
-
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => handleEdit(rec)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(rec.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <button
+                          className="btn-delete"
+                          onClick={() => allowed && handleDelete(rec.id)}
+                          disabled={!allowed}
+                          style={{
+                            opacity: allowed ? 1 : 0.5,
+                            cursor: allowed ? "pointer" : "not-allowed"
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

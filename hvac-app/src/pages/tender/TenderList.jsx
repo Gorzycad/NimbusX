@@ -14,6 +14,7 @@ import { getLeads } from "../../firebase/leadsService";
 import MultiUploadWithDelete from "../leads/LeadsFileUpload";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
+import UploadPage from "../leads/LeadsFileUpload";
 
 import {
   collection,
@@ -23,15 +24,27 @@ import {
 import { db } from "../../firebase/firebase";
 import { notifyAssignedStaff } from "../leads/LeadsListHelper";
 
-function cleanData(data) {
-  return Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
+
+function deepClean(obj) {
+  if (Array.isArray(obj)) {
+    return obj
+      .map(deepClean)
+      .filter(v => v !== undefined);
+  }
+
+  if (obj && typeof obj === "object") {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== undefined)
+        .map(([k, v]) => [k, deepClean(v)])
+    );
+  }
+
+  return obj;
 }
 
 export default function TenderList() {
-  const { companyId, user } = useAuth();
-
+  const { companyId, user, role, displayName } = useAuth();
   const [tenders, setTenders] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -129,10 +142,10 @@ export default function TenderList() {
 
     const creatorName = staffNameMap[user.uid] || "Unknown User";
 
-    const cleaned = {
-      ...cleanData(formData),
+    const cleaned = deepClean({
+      ...formData,
       staffAssigned: formData.staffAssigned,
-    };
+    });
 
     if (!editingId) {
       cleaned.createdBy = {
@@ -148,8 +161,14 @@ export default function TenderList() {
       tenderId = editingId;
       setEditingId(null);
     } else {
-      const docRef = await addTender(companyId, cleaned);
-      tenderId = docRef.id;
+      console.log(
+        "TENDER BEFORE SAVE",
+        JSON.stringify(cleaned, null, 2)
+      );
+
+      const newTender = await addTender(companyId, cleaned);
+      setTenders(prev => [newTender, ...prev]);
+      tenderId = newTender.id;
     }
 
     console.log("TenderId before notify:", tenderId);
@@ -175,12 +194,7 @@ export default function TenderList() {
       awardedStatus: "Pending",
     });
 
-    const refreshed = await getTenders(companyId);
-    setTenders(
-      (refreshed || []).sort((a, b) =>
-        (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
-      )
-    );
+
   };
 
   /* -----------------------------
@@ -205,6 +219,16 @@ export default function TenderList() {
     await deleteTender(companyId, id);
 
     setTenders(prev => prev.filter(t => t.id !== id));
+  };
+
+  const canModifyLead = (item) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = item.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
   };
 
   if (loading) {
@@ -257,7 +281,7 @@ export default function TenderList() {
 
           <div className="mb-3">
             <label className="form-label">Upload Files</label>
-            <MultiUploadWithDelete
+            <UploadPage
               uploadedFiles={formData.fileUpload}
               onFilesChange={(files) =>
                 setFormData(prev => ({ ...prev, fileUpload: files }))
@@ -317,65 +341,101 @@ export default function TenderList() {
             </thead>
 
             <tbody>
-              {tenders.length ? tenders.map(item => (
-                <tr key={item.id}>
-                  <td>{item.createdBy?.name || "--"}</td>
-                  <td>{item.title}</td>
-                  <td>{item.projectName}</td>
-                  <td>
-                    {item.fileUpload.length ? (
-                  <ul style={{ paddingLeft: 16 }}>
-                    {item.fileUpload.map(f => (
-                      <li key={f.fileId}>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#1976d2",
-                            cursor: "pointer",
-                            textDecoration: "underline"
-                          }}
-                          onClick={async () => {
-                            const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                            const token = tokens?.access_token;
+              {tenders.length ? tenders.map(item => {
+                const allowed = canModifyLead(item);
+                return (
+                  <tr key={item.id}>
+                    <td>{item.createdBy?.name || "--"}</td>
+                    <td>{item.title}</td>
+                    <td>{item.projectName}</td>
+                    <td>
+                      {Array.isArray(item.fileUpload) &&
+                        item.fileUpload.length > 0 ? (
+                        <ul style={{ paddingLeft: 16 }}>
+                          {(item.fileUpload || []).map(f => (
+                            <li key={f.fileId}>
+                              <button
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#1976d2",
+                                  cursor: "pointer",
+                                  textDecoration: "underline"
+                                }}
+                                // onClick={async () => {
+                                //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
+                                //   const token = tokens?.access_token;
 
-                            if (!token) {
-                              alert("You must login first");
-                              return;
-                            }
+                                //   if (!token) {
+                                //     alert("You must login first");
+                                //     return;
+                                //   }
 
-                            const result = await window.electron.downloadFile(f.fileId, token, f.name)
+                                //   const result = await window.electron.downloadFile(f.fileId, token, f.name)
 
-                            if (!result?.success) {
-                              alert("Download failed");
-                            }
-                          }}
-                        >
-                          ⬇ {f.name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )
-                      : "--"}
-                  </td>
-                  <td>
-                    {(item.staffAssigned || [])
-                      .map(uid => staffNameMap[uid] || uid)
-                      .join(", ")}
-                  </td>
-                  <td>{item.awardedStatus}</td>
-                  <td>
-                    {item.createdAt
-                      ? new Date(item.createdAt.seconds * 1000).toLocaleString()
-                      : "--"}
-                  </td>
-                  <td>
-                    <button className="btn btn-sm btn-warning me-2" onClick={() => handleEdit(item)}>Edit</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>Delete</button>
-                  </td>
-                </tr>
-              )) : (
+                                //   if (!result?.success) {
+                                //     alert("Download failed");
+                                //   }
+                                // }}
+                                onClick={async () => {
+                                  const result = await window.electron.downloadFile(
+                                    f.fileId,
+                                    null,
+                                    f.name
+                                  );
+
+                                  if (!result?.success) {
+                                    alert("Download failed");
+                                  }
+                                }}
+                              >
+                                ⬇ {f.name}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )
+                        : "--"}
+                    </td>
+                    <td>
+                      {(item.staffAssigned || [])
+                        .map(uid => staffNameMap[uid] || uid)
+                        .join(", ")}
+                    </td>
+                    <td>{item.awardedStatus}</td>
+                    <td>
+                      {item.createdAt
+                        ? new Date(item.createdAt.seconds * 1000).toLocaleString()
+                        : "--"}
+                    </td>
+                    <td>
+                      <button
+                        className="btn-edit"
+                        onClick={() => allowed && handleEdit(item)}
+                        disabled={!allowed}
+                        style={{
+                          opacity: allowed ? 1 : 0.5,
+                          cursor: allowed ? "pointer" : "not-allowed"
+                        }}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        className="btn-delete"
+                        onClick={() => allowed && handleDelete(item.id)}
+                        disabled={!allowed}
+                        style={{
+                          opacity: allowed ? 1 : 0.5,
+                          cursor: allowed ? "pointer" : "not-allowed"
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }) : (
                 <tr>
                   <td colSpan="8" className="text-center">No tender records yet.</td>
                 </tr>

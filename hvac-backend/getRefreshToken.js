@@ -1,3 +1,4 @@
+// hvac-backend/getRefreshToken.js
 import { google } from "googleapis";
 
 export default async function handleGoogleTokenFlow(CONFIG, code = null) {
@@ -28,6 +29,7 @@ export default async function handleGoogleTokenFlow(CONFIG, code = null) {
       access_type: "offline",
       prompt: "consent",
       scope: scopes,
+      include_granted_scopes: true,
     });
 
     return { authUrl };

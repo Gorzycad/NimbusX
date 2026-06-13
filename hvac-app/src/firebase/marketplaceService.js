@@ -1,3 +1,4 @@
+// src/firebase/marketplaceService.js
 import {
   collection,
   addDoc,
@@ -11,6 +12,62 @@ import { db } from "../firebase/firebase";
 /**
  * Save Order after successful payment
  */
+// export const saveOrder = async ({
+//   companyId,
+//   cart,
+//   total,
+//   address,
+//   phone,
+//   paymentRef,
+//   createdBy,
+//   createdAt,
+//   deliveryFee,
+//   deliveryLocation,
+// }) => {
+//   if (!companyId) throw new Error("Missing companyId");
+
+//   const safeTotal = Number(total || 0);
+//   const safeDeliveryFee = Number(deliveryFee || 0);
+
+//   const orderData = {
+//     items: cart,
+
+//     total: safeTotal,
+//     deliveryFee: safeDeliveryFee,
+//     grandTotal: safeTotal + safeDeliveryFee,
+
+//     address,
+//     phone,
+//     paymentRef,
+//     deliveryLocation,
+
+//     createdBy,
+//     paymentStatus: "paid",
+//     createdAt: serverTimestamp(),
+//   };
+
+//   console.log("ORDER DATA BEFORE FIRESTORE");
+//   console.log(JSON.stringify(orderData, null, 2));
+
+//   // 🔥 HARD SAFETY CHECK (THIS WILL CATCH REAL ISSUE)
+//   Object.entries(orderData).forEach(([k, v]) => {
+//     if (v === undefined) {
+//       console.error("❌ UNDEFINED FIELD:", k);
+//     }
+//   });
+
+//  const docRef = await addDoc(
+//     collection(db, "companies", companyId, "orders"),
+//     orderData
+//   );
+
+//   const savedSnap = await getDoc(docRef);
+
+//   return {
+//     id: docRef.id,
+//     ...savedSnap.data(),
+//   };
+// };
 export const saveOrder = async ({
   companyId,
   cart,
@@ -18,15 +75,25 @@ export const saveOrder = async ({
   address,
   phone,
   paymentRef,
+  createdBy,
+  deliveryFee,
+  deliveryLocation,
 }) => {
   if (!companyId) throw new Error("Missing companyId");
 
+  const safeTotal = Number(total || 0);
+  const safeDeliveryFee = Number(deliveryFee || 0);
+
   const orderData = {
     items: cart,
-    total,
+    total: safeTotal,
+    deliveryFee: safeDeliveryFee,
+    grandTotal: safeTotal + safeDeliveryFee,
     address,
     phone,
     paymentRef,
+    deliveryLocation,
+    createdBy,
     paymentStatus: "paid",
     createdAt: serverTimestamp(),
   };
@@ -36,9 +103,8 @@ export const saveOrder = async ({
     orderData
   );
 
-  return { id: docRef.id, ...orderData };
+  return docRef.id;
 };
-
 /**
  * Update product stock after order
  */

@@ -1,38 +1,23 @@
 // src/pages/marketplace/Marketplace.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  doc,
-  updateDoc,
-  serverTimestamp
-} from "firebase/firestore";
+import { collection, addDoc, getDocs, getDoc, doc, updateDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { generatePoPdf } from "../../helpers/generatePoPdf";
 import { generateInvoicePdfBlob } from "../../helpers/generateInvoicePdfBlob";
-import MultiUploadWithDelete from "../leads/LeadsFileUpload";
-import { usePaystackPayment } from "react-paystack";
-import {
-  saveOrder,
-  updateStockAfterOrder,
-  markPoAsPaid,
-} from "../../firebase/marketplaceService";
+import { saveOrder, updateStockAfterOrder, markPoAsPaid } from "../../firebase/marketplaceService";
+import { uploadFileToDrive } from "../../helpers/uploadFileToDrive";
 
 export default function Marketplace() {
   const { companyId, user, userData } = useAuth();
   const [invoiceFiles, setInvoiceFiles] = useState({});
-  const [paymentNotice, setPaymentNotice] = useState(
-    "Please ensure payment is made within 7 working days."
-  );
+  const [paymentNotice, setPaymentNotice] = useState("Deliveries take approx 4-5 working days.");
   const [activePaymentPo, setActivePaymentPo] = useState(null);
   const [poList, setPoList] = useState([]);
   const [tracking, setTracking] = useState({});
-  const [editingProductId, setEditingProductId] = useState(null);
-  const [editStock, setEditStock] = useState({});
   const role = userData?.role?.toLowerCase();
+  const [deliveryLocation, setDeliveryLocation] = useState("Lagos");
+  const [productImages, setProductImages] = useState({});
 
   // ===============================
   // 🆕 STORE STATE
@@ -42,9 +27,11 @@ export default function Marketplace() {
     name: "",
     stock: "",
     price: "",
+    unit: "",
     description: "",
-    image: "",
+    imageFileId: "",
     unitKg: "",
+    discipline: "mechanical",
   });
 
   const [cart, setCart] = useState([]);
@@ -53,16 +40,17 @@ export default function Marketplace() {
   const [qtySelection, setQtySelection] = useState({});
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  //const [activeCheckout, setActiveCheckout] = useState(false);
-  const [deliveryLocation, setDeliveryLocation] = useState("lagos");
+  const [openGroups, setOpenGroups] = useState({
+    mechanical: true,
+    electrical: false,
+    plumbing: false,
+  });
 
   const payWithPaystack = (config, onSuccess) => {
     if (!window.PaystackPop) {
       alert("Paystack not loaded");
       return;
     }
-
-
 
     const handler = window.PaystackPop.setup({
       key: config.key,
@@ -94,15 +82,6 @@ export default function Marketplace() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
 
-  // const checkoutconfig = {
-  //   reference: "ORDER_" + Date.now(),
-  //   email: userData.email,
-  //   amount: total * 100,
-  //   publicKey: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
-  // };
-
-  // const initializeCheckoutPayment = usePaystackPayment(checkoutConfig);
-
   // Payment handler for Checkout
   const handlePaymentAndCheckout = () => {
     if (!checkout.address || !checkout.phone) {
@@ -123,10 +102,10 @@ export default function Marketplace() {
     payWithPaystack(
       {
         reference: "ORDER_" + Date.now(),
-        email: userData.email,
+        email: userData?.email || user?.email,
         amount: grandTotal * 100, //i replaced amount with grandtotal
-        //key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
-        key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
+        key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
+        //key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
         type: "checkout",
       },
       (response) => {
@@ -137,9 +116,10 @@ export default function Marketplace() {
 
   };
 
-  const handlePoPayment = (po) => {
-    const amount = Number(po.totalAmount || po.boqSnapshot?.total || 0);
 
+
+  const handlePoPayment = (po) => {
+    const amount = Number(po.grandTotal || 0);
     console.log("PO DEBUG:", po);
     console.log("AMOUNT:", amount);
     console.log("TOTAL AMOUNT RAW:", po.totalAmount);
@@ -158,10 +138,10 @@ export default function Marketplace() {
     payWithPaystack(
       {
         reference: "PO_" + Date.now(),
-        email: userData.email,
-        amount: grandTotal * 100, //i replaced amount with grandtotal
-        //key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
-        key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
+        email: userData?.email || user?.email,
+        amount: amount * 100, //i replaced amount with grandtotal
+        key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
+        //key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
         type: "purchase_order",
       },
       async (response) => {
@@ -173,17 +153,10 @@ export default function Marketplace() {
           paymentRef: response.reference,
           amount: amount,
         });
-        // await updateDoc(
-        //   doc(db, "companies", po.companyId, "purchaseOrders", po.id),
-        //   {
-        //     paymentStatus: true,
-        //     paymentRef: response.reference,
-        //   }
-        // );
 
         console.log({
-          email: userData.email,
-          amount: grandTotal * 100, //i replaced amount with grandtotal
+          email: userData?.email || user?.email,
+          amount: amount * 100, //i replaced amount with grandtotal
           reference: "PO_" + Date.now(),
         });
 
@@ -197,25 +170,152 @@ export default function Marketplace() {
   };
 
 
-  const loadProducts = async () => {
-    const snap = await getDocs(
-      collection(db, "products")
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "products"),
+      (snap) => {
+        const data = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data(),
+        }));
+        setProducts(prev => {
+          const prevStr = JSON.stringify(prev);
+          const nextStr = JSON.stringify(data);
+
+          if (prevStr === nextStr) return prev; // 🚫 prevents rerender loop
+          return data;
+        });
+        setQtySelection(prev => {
+          const updated = { ...prev };
+          data.forEach(p => {
+            if (updated[p.id] === undefined) {
+              updated[p.id] = 0;
+            }
+          });
+          return updated;
+        });
+      }
     );
+    return () => unsub();
+  }, []);
 
-    const data = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
+  // const getDriveFile = (fileId, refreshToken) => {
+  //   return window.electron.invoke("get-drive-file", {
+  //     fileId,
+  //     refreshToken,
+  //   });
+  // };
 
-    setProducts(data);
+  // useEffect(() => {
+  //   if (!products.length || !userData?.googleRefreshToken) return;
 
-    // initialize qty
-    const qtyInit = {};
-    data.forEach(p => {
-      qtyInit[p.id] = 0;
+  //   let cancelled = false;
+
+  //   const loadImages = async () => {
+  //     const failedCache = new Set();
+  //     const imageCache = new Map();
+
+  //     const results = await Promise.all(
+  //       products.map(async (p) => {
+  //         if (!p.imageFileId) return null;
+
+  //         const fileId = p.imageFileId; // ❗ FIXED (you were using undefined variable)
+
+  //         try {
+  //           if (imageCache.has(fileId)) return imageCache.get(fileId);
+  //           if (failedCache.has(fileId)) return null;
+
+  //           if (!window.electron?.invoke) {
+  //             console.error("Electron invoke not available");
+  //             return;
+  //           }
+
+  //           const result = await getDriveFile(p.imageFileId, userData.googleRefreshToken);
+  //           // const result = await window.electron.invoke("get-drive-image",
+  //           //   {
+  //           //     fileId: p.imageFileId,
+  //           //     refreshToken: userData.googleRefreshToken,
+  //           //   }
+  //           // );
+
+  //           console.log("Refresh token:", userData?.googleRefreshToken);
+  //           console.log("Products:", products);
+  //           console.log("Loading image:", p.name, p.imageFileId);
+  //           console.log("IMAGE RESULT:", p.name, result);
+
+  //           if (!result?.success) {
+  //             failedCache.add(fileId);
+  //             return null;
+  //           }
+
+  //           imageCache.set(fileId, result.url);
+  //           return [p.id, result.url];
+
+
+  //         } catch (err) {
+  //           console.error(err);
+  //           failedCache.add(fileId);
+  //           return null;
+  //         }
+  //       })
+  //     );
+
+  //     if (cancelled) return;
+
+  //     const map = Object.fromEntries(results.filter(Boolean));
+  //     setProductImages(map);
+
+  //   };
+
+  //   loadImages();
+
+  //   return () => {
+  //     cancelled = true;
+  //   };
+
+  // }, [products, userData?.googleRefreshToken]);
+
+  useEffect(() => {
+    const map = {};
+
+    products.forEach((p) => {
+      if (p.imageFileId) {
+        // map[p.id] =
+        //   `https://drive.google.com/thumbnail?id=${p.imageFileId}&sz=w1000`;
+        map[p.id] =
+          `https://lh3.googleusercontent.com/d/${p.imageFileId}=w1000`;
+        console.log(
+          products.map(p => ({
+            id: p.id,
+            name: p.name,
+            imageFileId: p.imageFileId
+          }))
+        );
+      } else {
+        map[p.id] = null;
+      }
     });
-    setQtySelection(qtyInit);
-  };
+
+    setProductImages(map);
+  }, [products]);
+
+  // useEffect(() => {
+  //   const runCheck = async () => {
+  //     if (!products.length) return;
+
+  //     for (const product of products) {
+  //       if (!product.imageFileId) continue;
+
+  //       const res = await getDriveFile(product.imageFileId);
+
+  //       if (!res.ok) {
+  //         console.log("BAD FILE:", product.imageFileId);
+  //       }
+  //     }
+  //   };
+
+  //   runCheck();
+  // }, [products]);
 
   const loadPOs = async () => {
     const snap = await getDocs(
@@ -252,24 +352,31 @@ export default function Marketplace() {
      Load Purchase Orders
   ----------------------------- */
   useEffect(() => {
-    if (!companyId && role !== "developer") return;
-    setLoading(true);
-    const loadData = async () => {
-      if (role === "developer") {
+    if (!companyId) return;
 
+    let active = true;
+
+    const loadData = async () => {
+      if (!active) return;
+
+      setLoading(true);
+
+      if (role === "developer") {
         await loadAllPOs();
         await loadAllOrders();
-        await loadProducts(); // optional: global products later
       } else {
-        await loadPOs();       // your existing function
-        await loadOrders();    // your existing function
-        await loadProducts();
+        await loadPOs();
+        await loadOrders();
       }
-      setLoading(false);
+
+      if (active) setLoading(false);
     };
 
-
     loadData();
+
+    return () => {
+      active = false;
+    };
   }, [companyId, role]);
 
   //LOAD ALL PURCHASE ORDERS (DEVELOPER)
@@ -311,7 +418,6 @@ export default function Marketplace() {
     setTracking(track);
   };
 
-  //LOAD ALL ORDERS (DEVELOPER)
   const loadAllOrders = async () => {
     try {
       const companiesSnap = await getDocs(collection(db, "companies"));
@@ -326,17 +432,31 @@ export default function Marketplace() {
           collection(db, "companies", companyId, "orders")
         );
 
-        const orderData = orderSnap.docs.map(d => ({
-          id: d.id,
-          companyId,
-          companyName,
-          ...d.data(),
-          date: d.data().createdAt?.toDate?.().toLocaleString() || "--",
-        }));
+        const orderData = orderSnap.docs.map(d => {
+          const data = d.data();
+
+          const createdAt = data.createdAt;
+
+          let date = "--";
+
+          if (createdAt?.toDate) {
+            date = createdAt.toDate().toLocaleString();
+          } else if (createdAt?.seconds) {
+            date = new Date(createdAt.seconds * 1000).toLocaleString();
+          }
+
+          return {
+            id: d.id,
+            companyId,
+            companyName,
+            ...data,
+            date,
+          };
+        });
 
         allOrders = [...allOrders, ...orderData];
       }
-      // Optional: sort latest first
+
       allOrders.sort(
         (a, b) =>
           (b.createdAt?.seconds || 0) -
@@ -350,62 +470,70 @@ export default function Marketplace() {
   };
 
   /* -----------------------------
-     BOQ LOAER FUNCTON
+     MTO LOAER FUNCTON
   ----------------------------- */
   const downloadPoPdf = async (po) => {
-    if (!po.boqId) {
-      alert("BOQ not linked to this PO");
+    if (!po.mtoId) {
+      alert("MTO not linked to this PO");
       return;
     }
 
-    const boqRef = doc(
-      db,
-      "companies",
-      companyId,
-      "boqs",
-      po.boqId
-    );
+    const mtoRows =
+      po.mtoSnapshot?.mechanical?.length ||
+      po.mtoSnapshot?.electrical?.length ||
+      po.mtoSnapshot?.plumbing?.length;
 
-    const snap = await getDoc(boqRef);
-
-    if (!snap.exists()) {
-      alert("BOQ not found");
+    if (!mtoRows) {
+      alert("MTO snapshot missing");
       return;
     }
-
-    const boq = snap.data();
 
     generatePoPdf({
       po,
-      boq,
+      boq: {
+        mechanical: po.mtoSnapshot?.mechanical || [],
+        electrical: po.mtoSnapshot?.electrical || [],
+        plumbing: po.mtoSnapshot?.plumbing || [],
+        title: po.mtoTitle || "MTO",
+      },
+      deliveryFee: po.deliveryFee || 0,
     });
   };
+
   /* -----------------------------
        Invoice pdf downloader
     ----------------------------- */
   const downloadInvoicePdf = async (po) => {
-    if (!po.boqId) {
-      alert("BOQ not linked to this PO");
+    if (!po.mtoId) {
+      alert("MTO not linked to this PO");
       return;
     }
 
-    const boqRef = doc(db, "companies", companyId, "boqs", po.boqId);
-    const snap = await getDoc(boqRef);
+    const hasMto =
+      po.mtoSnapshot?.mechanical?.length ||
+      po.mtoSnapshot?.electrical?.length ||
+      po.mtoSnapshot?.plumbing?.length;
 
-    if (!snap.exists()) {
-      alert("BOQ not found");
+    if (!hasMto) {
+      alert("MTO snapshot missing");
       return;
     }
 
-    const boq = snap.data();
-
-    const blob = generateInvoicePdfBlob({ po, boq });
+    const blob = generateInvoicePdfBlob({
+      po,
+      boq: {
+        mechanical: po.mtoSnapshot?.mechanical || [],
+        electrical: po.mtoSnapshot?.electrical || [],
+        plumbing: po.mtoSnapshot?.plumbing || [],
+      },
+      deliveryFee: po.deliveryFee || 0,
+    });
 
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = `INV-${po.id}.pdf`;
+    link.download = `INV-${po.poId}.pdf`;
 
     document.body.appendChild(link);
     link.click();
@@ -458,18 +586,22 @@ export default function Marketplace() {
     );
   };
 
-
-
-
   /* -----------------------------
      Generate Invoice (placeholder)
   ----------------------------- */
   const generateInvoice = async (po) => {
-    if (!po.boqSnapshot) return alert("BOQ Snapshot missing in PO");
+    if (!po.mtoSnapshot) return alert("MTO Snapshot missing in PO");
 
-    const blob = generateInvoicePdfBlob({ po, boq: po.boqSnapshot });
+    const blob = generateInvoicePdfBlob({
+      po,
+      mto: po.mtoSnapshot,
+      deliveryFee: po.deliveryFee || 0,
+      grandTotal:
+        Number(po.totalAmount || 0) +
+        Number(po.deliveryFee || 0),
+    });
     const totalAmount =
-      po.boqSnapshot?.total ||
+      po.grandTotal?.total ||
       po.totalAmount ||
       0;
 
@@ -505,38 +637,48 @@ export default function Marketplace() {
 
   const addProduct = async () => {
     if (!form.name || !form.stock || !form.price) return;
-
+    console.log("FORM BEFORE SAVE:", form);
     try {
       const newProduct = {
         name: form.name,
         stock: Number(form.stock),
         price: Number(form.price),
+        unit: form.unit || "",
         description: form.description || "",
         unitKg: Number(form.unitKg || 0), // ✅ NEW
-        image: form.image || "",
+        imageFileId: form.imageFileId,
+        discipline: form.discipline, // 👈 ADD THIS
         createdAt: serverTimestamp(),
       };
 
-      const docRef = await addDoc(
-        collection(db, "products"),
-        newProduct
-      );
-
-      setProducts([
-        ...products,
-        { id: docRef.id, ...newProduct },
-      ]);
+      const docRef = await addDoc(collection(db, "products"), {
+        ...newProduct,
+        source: "manual",
+      });
 
       setQtySelection((prev) => ({ ...prev, [docRef.id]: 0 }));
 
-      setForm({ name: "", stock: "", price: "", unitKg: "", description: "", image: "" });
+      setForm({ name: "", stock: "", price: "", unit: "", unitKg: "", description: "", imageFileId: "", discipline: "mechanical" });
 
     } catch (err) {
       console.error("🔥 Error adding product:", err);
     }
   };
 
+  //GROUP STORE PRODUCTS
+  const groupedProducts = products.reduce((acc, p) => {
+    const key = p.discipline || "uncategorized";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
+    return acc;
+  }, {});
 
+  const toggleGroup = (key) => {
+    setOpenGroups(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const updateStoreQty = (id, change, stock) => {
     const current = qtySelection[id] || 0;
@@ -562,8 +704,10 @@ export default function Marketplace() {
         )
       );
     } else {
-      setCart([...cart, { ...product, unitKg: product.unitKg || 0, // ✅ ensure it exists
-       qty: selectedQty }]);
+      setCart([...cart, {
+        ...product, unitKg: product.unitKg || 0, // ✅ ensure it exists
+        qty: selectedQty
+      }]);
     }
 
     setQtySelection({ ...qtySelection, [product.id]: 0 });
@@ -585,161 +729,151 @@ export default function Marketplace() {
     );
   };
 
+  const formatDate = (value) => {
+    if (!value) return "--";
+
+    // Firestore Timestamp
+    if (value?.toDate) {
+      return value.toDate().toLocaleString();
+    }
+
+    // Firestore timestamp object
+    if (value?.seconds) {
+      return new Date(value.seconds * 1000).toLocaleString();
+    }
+
+    // JS Date string or number
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? "--" : d.toLocaleString();
+  };
+
 
   const handleCheckout = async (paymentRef) => {
+    const totalWeight = cart.reduce(
+      (sum, item) => sum + (item.unitKg || 0) * item.qty,
+      0
+    );
+
+    const baseFee =
+      deliveryLocation === "Lagos" ? 10000 : 90000;
+
+    const perKg =
+      deliveryLocation === "Lagos" ? 500 : 2000;
+
+    const deliveryFee = baseFee + totalWeight * perKg;
+
+    const grandTotal = total + deliveryFee;
+
+    console.log("AUTH COMPANY ID:", companyId);
+    console.log("USER DOC COMPANY ID:", userData?.companyId);
+    console.log("USER:", user);
+    console.log("USER DATA:", userData);
+    console.log("SAVE ORDER VALUES", {
+      total,
+      deliveryFee,
+      grandTotal,
+      cart,
+      companyId,
+      cartLength: cart.length,
+    });
     try {
+
       const newOrder = await saveOrder({
         companyId,
         cart,
-        total: grandTotal,
+        total,          // cart subtotal
         deliveryFee,
+        grandTotal,             // total + delivery
         deliveryLocation,
         address: checkout.address,
         phone: checkout.phone,
         paymentRef,
+        createdAt: serverTimestamp(),
+
+        createdBy: {
+          uid: user?.uid || "",
+          email: user?.email || "",
+        },
       });
 
       await updateStockAfterOrder(cart);
-
-      setOrders((prev) => [
-        {
-          id: newOrder.id,
-          ...newOrder,
-          date: new Date().toLocaleString(),
-        },
-        ...prev,
-      ]);
+      await loadOrders();
 
       setCart([]);
       setCheckout({ address: "", phone: "" });
 
       alert("Order saved successfully!");
 
-      await loadProducts();
     } catch (err) {
       console.error("🔥 Checkout error:", err);
     }
-  };
-  // const handleCheckout = async (paymentRef) => {
-  //   if (!checkout.address || !checkout.phone) {
-  //     alert("Fill delivery details");
-  //     return;
-  //   }
-
-  //   try {
-  //     // Save order to Firestore
-  //     const orderData = {
-  //       items: cart,
-  //       total,
-  //       address: checkout.address,
-  //       phone: checkout.phone,
-  //       paymentRef: paymentRef,
-  //       paymentStatus: "paid",
-  //       createdAt: serverTimestamp(),
-  //     };
-
-  //     const docRef = await addDoc(
-  //       collection(db, "companies", companyId, "orders"),
-  //       orderData
-  //     );
-
-  //     // Update stock in Firestore
-  //     for (const item of cart) {
-  //       const productRef = doc(
-  //         db,
-  //         "products",
-  //         item.id
-  //       );
-
-  //       const snap = await getDoc(productRef);
-
-  //       if (!snap.exists()) continue;
-
-  //       const currentStock = Number(snap.data().stock || 0);
-  //       const newStock = Math.max(0, currentStock - item.qty);
-
-  //       await updateDoc(productRef, {
-  //         stock: newStock,
-  //       });
-  //     }
-
-  //     // Update local state
-  //     const newOrder = {
-  //       id: docRef.id,
-  //       ...orderData,
-  //       date: new Date().toLocaleString(),
-  //     };
-
-  //     setOrders([newOrder, ...orders]);
-  //     setCart([]);
-  //     setCheckout({ address: "", phone: "" });
-
-  //     alert("Order saved successfully!");
-
-  //   } catch (err) {
-  //     console.error("🔥 Checkout error:", err);
-  //   }
-  //   await loadProducts();
-  // };
-
-  const toggleEditProduct = (product) => {
-    if (editingProductId === product.id) {
-      setEditingProductId(null);
-    } else {
-      setEditingProductId(product.id);
-      setEditStock({
-        ...editStock,
-        [product.id]: product.stock,
-      });
-    }
-  };
-
-  const changeEditStock = (id, change) => {
-    const current = editStock[id] || 0;
-    const next = Math.max(0, current + change);
-
-    setEditStock({
-      ...editStock,
-      [id]: next,
-    });
-  };
-
-  const saveStockUpdate = async (product) => {
-    const newStock = editStock[product.id];
-
-    const ref = doc(
-      db,
-      "products",
-      product.id
-    );
-
-    await updateDoc(ref, { stock: newStock });
-
-    setEditingProductId(null);
-    await loadProducts();
   };
 
   const loadOrders = async () => {
     try {
       const companySnap = await getDoc(doc(db, "companies", companyId));
-      const companyName = companySnap.exists() ? companySnap.data().companyName : "--";
+      const companyName = companySnap.exists()
+        ? companySnap.data().companyName
+        : "--";
 
       const snap = await getDocs(
         collection(db, "companies", companyId, "orders")
       );
 
+      const data = snap.docs.map((d) => {
+        const order = d.data();
+        const createdAt = order.createdAt;
 
-      const data = snap.docs.map(d => ({
-        id: d.id,
-        companyId,
-        companyName,
-        ...d.data(),
-        date: d.data().createdAt?.toDate?.().toLocaleString() || "--"
-      }));
+        let date = "--";
+
+        if (createdAt?.toDate) {
+          date = createdAt.toDate().toLocaleString();
+        } else if (createdAt?.seconds) {
+          date = new Date(createdAt.seconds * 1000).toLocaleString();
+        }
+
+        return {
+          id: d.id,
+          companyId,
+          companyName,
+          ...order,
+          date,
+        };
+      });
 
       setOrders(data);
     } catch (err) {
       console.error("🔥 Error loading orders:", err);
+    }
+  };
+
+  const showDebugDialog = (title, data) => {
+    window.alert(
+      `${title}\n\n` + JSON.stringify(data, null, 2)
+    );
+  };
+
+  const handleProductImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const result = await uploadFileToDrive(file);
+
+      console.log("UPLOAD RESULT:", result);
+      //showDebugDialog("UPLOAD RESULT", result);
+      showDebugDialog("UPLOAD WORKED");
+      if (!result?.fileId) {
+        throw new Error("No fileId returned from upload");
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        imageFileId: result.fileId,
+      }));
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert("Image upload failed");
     }
   };
 
@@ -762,7 +896,7 @@ export default function Marketplace() {
   let baseFee = 0;
   let perKg = 0;
 
-  if (deliveryLocation === "lagos") {
+  if (deliveryLocation === "Lagos") {
     baseFee = 10000;
     perKg = 500;
   } else {
@@ -804,7 +938,11 @@ export default function Marketplace() {
               <tr>
                 <th>#</th>
                 <th>Company ID</th>
+                <th>Date</th>
                 <th>PO ID</th>
+                <th>Amount</th>
+                <th>Delivery</th>
+                <th>Grand Total</th>
                 <th>PO Download</th>
                 <th>Invoice Download</th>
                 <th>Payment Receipt</th>
@@ -817,8 +955,18 @@ export default function Marketplace() {
                 <tr key={po.id}>
                   <td>{idx + 1}</td>
                   <td>{po.companyId}</td>
+                  {/* <td>
+                    {po.createdAt?.seconds
+                      ? new Date(po.createdAt.seconds * 1000).toLocaleString()
+                      : "—"}
+                  </td> */}
+                  <td>{formatDate(po.createdAt)}</td>
                   <td>{po.poId}</td>
-
+                  <td>₦{Number(po.totalAmount || 0).toLocaleString()}</td>
+                  <td>₦{Number(po.deliveryFee || 0).toLocaleString()}</td>
+                  <td>
+                    ₦{Number(po.grandTotal || 0).toLocaleString()}
+                  </td>
                   {/* PO DOWNLOAD */}
                   <td>
                     <button
@@ -990,6 +1138,14 @@ export default function Marketplace() {
           <div className="card p-3 mb-4">
             <h5>Add Product</h5>
             <div className="row g-2">
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProductImage}
+                />
+              </div>
+
               <div className="col-md-3">
                 <input className="form-control" name="name" placeholder="Name" value={form.name} onChange={handleChange} />
               </div>
@@ -1000,10 +1156,25 @@ export default function Marketplace() {
                 <input className="form-control" name="price" placeholder="Price" value={form.price} onChange={handleChange} />
               </div>
               <div className="col-md-2">
+                <input className="form-control" name="unit" placeholder="Unit" value={form.unit} onChange={handleChange} />
+              </div>
+              <div className="col-md-2">
                 <input className="form-control" name="unitKg" placeholder="Unit Kg" value={form.unitKg} onChange={handleChange} />
               </div>
               <div className="col-md-4">
                 <input className="form-control" name="description" placeholder="Description" value={form.description} onChange={handleChange} />
+              </div>
+              <div className="col-md-2">
+                <select
+                  className="form-control"
+                  name="discipline"
+                  value={form.discipline}
+                  onChange={handleChange}
+                >
+                  <option value="mechanical">Mechanical</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="plumbing">Plumbing</option>
+                </select>
               </div>
             </div>
             <button className="btn btn-primary mt-3" onClick={addProduct}>Add Product</button>
@@ -1011,7 +1182,7 @@ export default function Marketplace() {
         )}
 
         {/* STORE LIST */}
-        <div className="row">
+        {/* <div className="row">
           {products.map((p) => (
             <div className="col-md-3 mb-3" key={p.id}>
               <div className="card h-100">
@@ -1030,57 +1201,97 @@ export default function Marketplace() {
                   <button className="btn btn-success w-100" onClick={() => addToCart(p)}>
                     Add to Cart
                   </button>
-                  {/* EDIT BUTTON (DEV ONLY) */}
-                  {role === "developer" && (
-                    <>
-                      <button
-                        className="btn btn-outline-secondary w-100 mt-2"
-                        onClick={() => toggleEditProduct(p)}
-                      >
-                        {editingProductId === p.id ? "Close Edit" : "Edit Product"}
-                      </button>
 
-                      {editingProductId === p.id && (
-                        <div className="mt-2 border p-2 rounded">
-                          <div className="d-flex align-items-center gap-2 mb-2">
+                </div>
+              </div>
+            </div>
+          ))}
+        </div> */}
+        <div className="mt-3">
+          {["mechanical", "electrical", "plumbing"].map((group) => (
+            <div key={group} className="mb-4">
+
+              {/* CATEGORY BUTTON */}
+              <button
+                className="btn btn-outline-dark w-100 text-start"
+                onClick={() => toggleGroup(group)}
+              >
+                {group.toUpperCase()} ({groupedProducts[group]?.length || 0})
+              </button>
+
+              {/* COLLAPSIBLE AREA */}
+              {openGroups[group] && (
+                <div className="row mt-2">
+                  {(groupedProducts[group] || []).map((p) => (
+                    <div className="col-md-3 mb-3" key={p.id}>
+                      <div className="card h-100">
+                        <div className="card-body">
+
+                          {/* {products.map((product) => (
+                            <div key={product.id}>
+                              {productImages[product.id] && (
+                                <img
+                                  src={productImages[product.id]}
+                                  alt={product.name}
+                                  style={{
+                                    width: "100%",
+                                    height: 200,
+                                    objectFit: "cover",
+                                  }}
+                                />
+                              )}
+                            </div>
+                          ))} */}
+                          {/* FIXED IMAGE BLOCK */}
+                          {productImages[p.id] && (
+                            <img
+                              src={productImages[p.id]}
+                              alt={p.name}
+                              style={{
+                                width: "100%",
+                                height: 200,
+                                objectFit: "cover",
+                              }}
+                            />
+                          )}
+
+                          <h5>{p.name}</h5>
+                          <p>{p.description}</p>
+                          <p>Stock: {p.stock}</p>
+                          <p>Price: ₦{p.price}</p>
+                          <p>Unit: ₦{p.unit}</p>
+
+                          <div className="d-flex gap-2 mb-2">
                             <button
                               className="btn btn-secondary"
-                              onClick={() => changeEditStock(p.id, -1)}
+                              onClick={() => updateStoreQty(p.id, -1, p.stock)}
                             >
                               -
                             </button>
 
-                            <span>{editStock[p.id]}</span>
+                            <span>{qtySelection[p.id] || 0}</span>
 
                             <button
                               className="btn btn-secondary"
-                              onClick={() => changeEditStock(p.id, 1)}
+                              onClick={() => updateStoreQty(p.id, 1, p.stock)}
                             >
                               +
                             </button>
                           </div>
 
-                          <div className="d-flex gap-2">
-                            <button
-                              className="btn btn-success btn-sm"
-                              onClick={() => saveStockUpdate(p)}
-                            >
-                              Update
-                            </button>
-
-                            <button
-                              className="btn btn-danger btn-sm"
-                              onClick={() => setEditingProductId(null)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                          <button
+                            className="btn btn-success w-100"
+                            onClick={() => addToCart(p)}
+                          >
+                            Add to Cart
+                          </button>
                         </div>
-                      )}
-                    </>
-                  )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
+
             </div>
           ))}
         </div>
@@ -1104,13 +1315,13 @@ export default function Marketplace() {
               </div>
             ))}
 
-            
+
             <div className="mb-2">
               <label className="me-3">
                 <input
                   type="radio"
-                  checked={deliveryLocation === "lagos"}
-                  onChange={() => setDeliveryLocation("lagos")}
+                  checked={deliveryLocation === "Lagos"}
+                  onChange={() => setDeliveryLocation("Lagos")}
                 />
                 Lagos
               </label>
@@ -1118,10 +1329,10 @@ export default function Marketplace() {
               <label>
                 <input
                   type="radio"
-                  checked={deliveryLocation === "others"}
-                  onChange={() => setDeliveryLocation("others")}
+                  checked={deliveryLocation === "Other States"}
+                  onChange={() => setDeliveryLocation("Other States")}
                 />
-                Others
+                Other States
               </label>
             </div>
 
@@ -1144,64 +1355,6 @@ export default function Marketplace() {
             <button className="btn btn-primary" onClick={handlePaymentAndCheckout}>
               Checkout
             </button>
-
-            {/* Payment Modal
-            {activeCheckout && (
-              <div
-                style={{
-                  position: "fixed",
-                  top: 0,
-                  left: 0,
-                  width: "100vw",
-                  height: "100vh",
-                  background: "#000000aa",
-                  zIndex: 9999,
-                }}
-              >
-                <div
-                  style={{
-                    position: "relative",
-                    width: "90%",
-                    height: "90%",
-                    margin: "2% auto",
-                    background: "#fff",
-                    borderRadius: 8,
-                    overflow: "hidden",
-                  }}
-                >
-                  <button
-                    onClick={() => setActiveCheckout(false)}
-                    style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 10,
-                      zIndex: 10,
-                      border: "none",
-                      background: "red",
-                      color: "#fff",
-                      padding: "4px 8px",
-                      borderRadius: 4,
-                    }}
-                  >
-                    ✖
-                  </button>
-
-                  {/* Iframe for Paystack Payment 
-                  <iframe
-                    src="https://paystack.shop/pay/5x75qlfimg"
-                    title="Paystack Payment"
-                    width="100%"
-                    height="100%"
-                    style={{ border: "none" }}
-                    onLoad={() => {
-                      // You might need a listener from your Paystack integration here
-                      // For example, check if payment succeeded
-                    }}
-                  />
-                </div>
-              </div>
-            )} 
-            */}
           </div>
         )}
 
@@ -1214,7 +1367,9 @@ export default function Marketplace() {
                 <th>Company</th>
                 <th>Date</th>
                 <th>Items + Qty + Unit Price</th>
-                <th>Total</th>
+                <th>Amount</th>
+                <th>Delivery</th>
+                <th>Grand Total</th>
                 <th>Address</th>
                 <th>Phone</th>
               </tr>
@@ -1222,18 +1377,29 @@ export default function Marketplace() {
             <tbody>
               {orders.map((o) => (
                 <tr key={o.id}>
-                  <td>{o.companyName}</td>
-                  <td>{o.date}</td>
-
+                  {/* <td>{o.companyName}</td> */}
+                  <td>{o.companyId}</td>
+                  <td>{formatDate(o.createdAt)}</td>
                   <td>
-                    {o.items.map((i) => (
+                    {(o.items || []).map((i) => (
                       <div key={i.id}>
                         {i.name} — Qty: {i.qty} — ₦{i.price}
                       </div>
                     ))}
                   </td>
 
-                  <td>₦{o.total}</td>
+                  <td>
+                    ₦{Number(o.total || 0).toLocaleString()}
+                  </td>
+
+                  <td>
+                    ₦{Number(o.deliveryFee || 0).toLocaleString()}
+                  </td>
+
+                  <td>
+                    ₦{Number(o.grandTotal || o.total || 0).toLocaleString()}
+                  </td>
+
                   <td>{o.address}</td>
                   <td>{o.phone}</td>
                 </tr>

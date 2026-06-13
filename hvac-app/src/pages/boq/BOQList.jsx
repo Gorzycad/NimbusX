@@ -1,14 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+// src/pages/boq/BOQList.jsx
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { getLeads } from "../../firebase/leadsService";
 import { addBoq, updateBoq, deleteBoq, getBoqs } from "../../firebase/boqService";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, getDocs, where, query } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { notifyAssignedStaff } from "../leads/LeadsListHelper";
-import { getDesigns } from "../../firebase/designService";
-
 
 /* role -> key */
 function roleNameToKeyLocal(friendlyName) {
@@ -25,17 +24,65 @@ async function getUsersByRoles(selectedRoles = [], companyId = null) {
   return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
 }
 
+function groupProductsByDiscipline(products = []) {
+  const groups = {
+    mechanical: [],
+    electrical: [],
+    plumbing: [],
+  };
+
+  const allowed = [
+    "mechanical",
+    "electrical",
+    "plumbing",
+  ];
+
+  for (const p of products) {
+
+    const discipline = allowed.includes(
+      (p.discipline || "").toLowerCase()
+    )
+      ? p.discipline.toLowerCase()
+      : "mechanical";
+
+    groups[discipline].push({
+      productId: p.id,
+      item: p.name,
+      sku: p.sku || "",
+      unit: p.unit || "",
+      rate: p.price || 0,
+      qty: 0,
+      isCategory: false,
+    });
+  }
+
+  return groups;
+}
+
+function createDefaultBoqData(products = []) {
+  const grouped = groupProductsByDiscipline(products);
+
+  return {
+    title: "",
+    projectName: "",
+    staffAssigned: [],
+
+    mechanical: grouped.mechanical,
+    electrical: grouped.electrical,
+    plumbing: grouped.plumbing,
+  };
+}
+
+
 export default function BoqPage() {
-  const { companyId, user } = useAuth();
+  const { companyId, user, role, displayName } = useAuth();
   const [boqRows, setBoqRows] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [openSection, setOpenSection] = useState(null);
-  const [designs, setDesigns] = useState([]);
   const [staffList, setStaffList] = useState([]);
-  //const [boqs, setBoqs] = useState([]);
-
+  const [products, setProducts] = useState([]);
   const [formData, setFormData] = useState({
     title: "",
     projectName: "",
@@ -44,7 +91,6 @@ export default function BoqPage() {
     electrical: [],
     plumbing: [],
   });
-
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
@@ -60,61 +106,27 @@ export default function BoqPage() {
     load();
   }, [companyId]);
 
- useEffect(() => {
-  if (!formData.projectName) return;
-
-  const design = designs.find(
-    d => d.projectName === formData.projectName
-  );
-
-  if (!design || !design.mechBOQ) {
-    console.warn("No Mechanical BOQ found for project:", formData.projectName);
-    return;
-  }
-
-  // ✅ Convert mechBOQ → flat table format
-  const mechanicalRows = [];
-
-  design.mechBOQ.forEach(section => {
-    // Category row (no unit = your UI treats as header)
-    mechanicalRows.push({
-      item: section.category,
-      qty: "",
-      unit: "",
-      rate: 0,
-    });
-
-    section.items.forEach(item => {
-      mechanicalRows.push({
-        item: item.name,
-        qty: item.qty,
-        unit: item.unit,
-        rate: 0, // user will fill rate later
-      });
-    });
-  });
-
-  setFormData(prev => ({
-    ...prev,
-    mechanical: mechanicalRows,
-    electrical: [], // future-ready
-    plumbing: [],   // future-ready
-  }));
-
-}, [formData.projectName, designs]);
-
-
-  /* ---------------- LOAD BOQ FROM SHEET ---------------- */
   useEffect(() => {
     if (!companyId) return;
 
-    const loadDesigns = async () => {
-      const data = await getDesigns(companyId);
-      setDesigns(data || []);
+    const loadProducts = async () => {
+      const snap = await getDocs(collection(db, "products"));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setProducts(data);
     };
 
-    loadDesigns();
+    loadProducts();
   }, [companyId]);
+
+
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!products.length || initializedRef.current) return;
+
+    setFormData(createDefaultBoqData(products));
+    initializedRef.current = true;
+  }, [products]);
 
   /* ---------------- LOAD BOQ ON PAGE LOAD ---------------- */
   useEffect(() => {
@@ -197,7 +209,7 @@ export default function BoqPage() {
   function addRow(section) {
     setFormData((prev) => {
       const clone = structuredClone(prev);
-      clone[section].push({ item: "", qty: 0, unit: "", rate: 0 });
+      clone[section].push({ item: "", qty: 0, unit: "", rate: 0, isCategory: false });
       return clone;
     });
   }
@@ -232,7 +244,6 @@ export default function BoqPage() {
       setEditingId(null);
     } else {
       const creatorName = staffNameMap[user.uid] || "Unknown User";
-      //id = await addBoq(companyId, payload);
       id = await addBoq(companyId, {
         ...payload,
         createdBy: {
@@ -258,19 +269,9 @@ export default function BoqPage() {
       console.warn("Notification failed, lead still saved:", err);
     }
 
-    /* reload saved BOQs */
-    //const items = await getBoqs(companyId);
-    //setBoqRows(items || []);
 
     /* reset form */
-    setFormData({
-      title: "",
-      projectName: "",
-      staffAssigned: [],
-      mechanical: [],
-      electrical: [],
-      plumbing: [],
-    });
+    setFormData(createDefaultBoqData(products));
 
     const refreshed = await getBoqs(companyId);
     setBoqRows(
@@ -278,7 +279,7 @@ export default function BoqPage() {
         (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
       )
     );
-    setOpenSection(null);
+    setOpenSection("mechanical");
   }
 
   /* ---------------- EDIT BOQ ---------------- */
@@ -292,7 +293,7 @@ export default function BoqPage() {
       electrical: structuredClone(item.electrical || []),
       plumbing: structuredClone(item.plumbing || []),
     });
-    setOpenSection(null);
+    setOpenSection("mechanical");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -304,6 +305,16 @@ export default function BoqPage() {
     setBoqRows(items || []);
   }
 
+  const canModifyLead = (b) => {
+    if (!user) return false;
+
+    const isCeo = (role || "").toLowerCase() === "ceo";
+
+    const isOwner = b.createdBy?.uid === user.uid;
+
+    return isCeo || isOwner;
+  };
+
   if (loading) {
     return (
       <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "70vh" }}>
@@ -314,28 +325,20 @@ export default function BoqPage() {
       </div>
     );
   }
-  
+
   /* ---------------- RENDER SECTION TABLE ---------------- */
   function renderSectionEditor(section) {
 
     if (!openSection || openSection !== section) return null;
-    const isCategoryRow = (row) => !row.unit;
+    //const isCategoryRow = (row) => !row.unit;
+    const isCategoryRow = (row) => row.isCategory;
 
     return (
       <div className="card mt-3">
         <div className="card-body">
           <h5 className="card-title mb-3">{section.toUpperCase()} BOQ</h5>
           <table className="table table-bordered table-striped">
-            {/* <thead>
-              <tr>
-                <th>Item</th>
-                <th style={{ width: "100px" }}>Qty</th>
-                <th>Unit</th>
-                <th>Rate</th>
-                <th>Total</th>
-                <th></th>
-              </tr>
-            </thead> */}
+
             <thead>
               <tr>
                 <th style={{ width: "40%" }}>Item</th>
@@ -351,16 +354,7 @@ export default function BoqPage() {
               {formData[section].map((row, idx) => {
                 const rowTotal = Number(row.qty || 0) * Number(row.rate || 0);
                 return (
-                  // <tr key={idx} className={isCategoryRow(row) ? "table-secondary fw-bold" : ""} >
-                  //   <td>
-                  //     <input
-                  //       className="form-control"
-                  //       value={row.item}
-                  //       onChange={(e) =>
-                  //         updateFormField(`${section}[${idx}].item`, e.target.value)
-                  //       }
-                  //     />
-                  //   </td>
+
                   <tr key={idx} className={isCategoryRow(row) ? "table-secondary" : ""}>
                     <td>
                       <input
@@ -394,17 +388,6 @@ export default function BoqPage() {
                       />
                     </td>
 
-                    {/* <td>
-                      <input
-                      type="number"
-                        className="form-control"
-                        value={isCategoryRow(row) ? "" : row.unit}
-                        disabled={isCategoryRow(row)}
-                        onChange={(e) =>
-                          updateFormField(`${section}[${idx}].unit`, e.target.value)
-                        }
-                      />
-                    </td> */}
                     <td>
                       <input
                         type="number"
@@ -523,15 +506,8 @@ export default function BoqPage() {
                 className="btn btn-secondary"
                 onClick={() => {
                   setEditingId(null);
-                  setFormData({
-                    title: "",
-                    projectName: "",
-                    staffAssigned: [],
-                    mechanical: [],
-                    electrical: [],
-                    plumbing: [],
-                  });
-                  setOpenSection(null);
+                  setFormData(createDefaultBoqData(products));
+                  setOpenSection("mechanical");
                 }}
               >
                 Cancel Edit
@@ -561,40 +537,63 @@ export default function BoqPage() {
                 </tr>
               </thead>
               <tbody>
-                {boqRows.map((b) => (
-                  <tr key={b.id}>
-                    <td>{b.createdBy?.name || "--"}</td>
-                    <td>{b.title}</td>
-                    <td>{b.projectName}</td>
-                    <td>{(b.totals?.grand || 0).toLocaleString()}</td>
-                    <td>
-                      {(b.staffAssigned || [])
-                        .map(uid => staffNameMap[uid] || uid)
-                        .join(", ")}
-                    </td>
-                    <td>
-                      {b.createdAt
-                        ? new Date(b.createdAt.seconds
-                          ? b.createdAt.seconds * 1000
-                          : b.createdAt).toLocaleString()
-                        : "--"}
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => handleEdit(b)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(b.id)}
-                      >
-                        Delete
-                      </button>
+                {boqRows.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="text-center text-muted">
+                      No BOQs saved yet
                     </td>
                   </tr>
-                ))}
+                ) : (
+
+                  boqRows.map((b) => {
+                    const allowed = canModifyLead(b);
+                    return (
+                      <tr key={b.id}>
+                        <td>{b.createdBy?.name || "--"}</td>
+                        <td>{b.title}</td>
+                        <td>{b.projectName}</td>
+                        <td>{(b.totals?.grand || 0).toLocaleString()}</td>
+                        <td>
+                          {(b.staffAssigned || [])
+                            .map(uid => staffNameMap[uid] || uid)
+                            .join(", ")}
+                        </td>
+                        <td>
+                          {b.createdAt
+                            ? new Date(b.createdAt.seconds
+                              ? b.createdAt.seconds * 1000
+                              : b.createdAt).toLocaleString()
+                            : "--"}
+                        </td>
+                        <td>
+                          <button
+                            className="btn-edit"
+                            onClick={() => allowed && handleEdit(b)}
+                            disabled={!allowed}
+                            style={{
+                              opacity: allowed ? 1 : 0.5,
+                              cursor: allowed ? "pointer" : "not-allowed"
+                            }}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            className="btn-delete"
+                            onClick={() => allowed && handleDelete(b.id)}
+                            disabled={!allowed}
+                            style={{
+                              opacity: allowed ? 1 : 0.5,
+                              cursor: allowed ? "pointer" : "not-allowed"
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  }))
+                }
               </tbody>
             </table>
           )}

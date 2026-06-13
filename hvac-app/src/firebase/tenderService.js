@@ -1,8 +1,8 @@
 // src/firebase/tenderService.js
-
 import {
   collection,
   addDoc,
+  getDoc,
   getDocs,
   deleteDoc,
   updateDoc,
@@ -17,18 +17,22 @@ import { db } from "./firebase";
 // -------------------------------------------------
 // ADD TENDER
 // -------------------------------------------------
-export async function addTender(companyId, data) {
-  const docRef = await addDoc(
-    collection(db, "companies", companyId, "tenders"),
-    {
-      ...data,
-      awardStatus: data.awardStatus || "Not Awarded",
-      createdAt: serverTimestamp(), // ✅ Firestore server time
-    }
-  );
+export const addTender = async (companyId, data) => {
+  const col = collection(db, "companies", companyId, "tenders");
 
-  return docRef; // ✅ return ref, not id (consistent with addAward)
-}
+  const docRef = await addDoc(col, {
+    ...data,
+    awardStatus: data.awardStatus || "Not Awarded",
+    createdAt: serverTimestamp(),
+  });
+
+  const snap = await getDoc(docRef);
+
+  return {
+    id: docRef.id,
+    ...snap.data(),
+  };
+};
 
 // -------------------------------------------------
 // GET ALL TENDERS
@@ -65,24 +69,34 @@ export async function deleteTender(companyId, tenderId) {
 // -------------------------------------------------
 // UPDATE AWARD STATUS (SYNC WITH AWARD PAGE)
 // -------------------------------------------------
-export async function updateTenderAwardStatus(companyId, projectName, status) {
-  const ref = collection(db, "companies", companyId, "tenders");
-  const q = query(ref, where("projectName", "==", projectName));
+export const updateTenderAwardStatus = async (companyId, projectName, status) => {
+  try {
+    const q = query(
+      collection(db, "companies", companyId, "tenders"),
+      where("projectName", "==", projectName)
+    );
 
-  const snap = await getDocs(q);
+    const snap = await getDocs(q);
 
-  if (snap.empty) return;
+    if (snap.empty) {
+      console.warn("No matching tender found for project:", projectName);
+      return;
+    }
 
-  // Update each tender that matches the project name
-  for (const d of snap.docs) {
-    const tenderRef = doc(db, "companies", companyId, "tenders", d.id);
+    const updates = snap.docs.map(d =>
+      updateDoc(
+        doc(db, "companies", companyId, "tenders", d.id),
+        { awardedStatus: status }
+      )
+    );
 
-    await updateDoc(tenderRef, {
-      awardStatus: status, // "Awarded" or "Not Awarded"
-      updatedAt: serverTimestamp(),
-    });
+    await Promise.all(updates);
+
+    console.log("✅ Tender status updated to", status, "for project:", projectName);
+  } catch (err) {
+    console.error("❌ Failed to update tender status:", err);
   }
-}
+};
 
 // -------------------------------------------------
 // GET SINGLE TENDER BY PROJECT
