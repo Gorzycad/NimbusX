@@ -1,7 +1,6 @@
 // src/components/auth/Register.jsx
 import React, { useEffect, useState } from "react";
 import {
-  getAuth,
   createUserWithEmailAndPassword,
   updateProfile,
   sendEmailVerification,
@@ -9,11 +8,13 @@ import {
 import {
   doc,
   getDoc,
+  getDocs,
+  collection,
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../../firebase/firebase";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { ROLE_ACCESS } from "../../config/roleAccess";
 
 // Convert snake_case roles to readable options
@@ -33,7 +34,7 @@ export default function Register() {
   const [submitting, setSubmitting] = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading,] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [error, setError] = useState("");
 
@@ -47,8 +48,6 @@ export default function Register() {
   });
 
 
-
-  const navigate = useNavigate();
 
   // Auto-generate Company ID
   useEffect(() => {
@@ -91,22 +90,22 @@ export default function Register() {
 
     // Validation
     if (!form.firstName || !form.lastName || !form.email || !form.password || !form.role) {
-      alert("Please fill all required fields.");
+      setError("Please fill all required fields.");
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      alert("Please enter a valid email address.");
+      setError("Please enter a valid email address.");
       return;
     }
 
     if (mode === "create" && !form.companyName) {
-      alert("Please enter a company name.");
+      setError("Please enter a company name.");
       return;
     }
 
     if (mode === "create" && companyId.length !== 5) {
-      alert("Company ID must be exactly 5 digits.");
+      setError("Company ID must be exactly 5 digits.");
       return;
     }
 
@@ -114,9 +113,20 @@ export default function Register() {
     const restrictedRoles = ["developer", "app_support", "market_agent"];
     const devCompanyId = "75312";
 
+    // Prevent creating another Company Admin in developer company
+    if (
+      companyId === devCompanyId &&
+      form.role.toLowerCase().replace(/\s+/g, "_") === "company_admin"
+    ) {
+      setError(
+        "Company Admin registration is disabled for this company."
+      );
+      return;
+    }
+
     // If the role is restricted and the companyId is not developer's company
     if (restrictedRoles.includes(form.role) && companyId !== devCompanyId) {
-      alert(
+      setError(
         `❌ The role "${form.role}" can only be registered under the developer's company.`
       );
       return;
@@ -126,7 +136,7 @@ export default function Register() {
 
     try {
       //const auth = getAuth();
-
+      localStorage.setItem("registrationInProgress", "true");
       // 1️⃣ Create Firebase Auth user
       const userCred = await createUserWithEmailAndPassword(
         auth,
@@ -140,33 +150,75 @@ export default function Register() {
       await updateProfile(userCred.user, {
         displayName: `${form.firstName} ${form.lastName}`,
       });
-
+      console.log("STEP 1 - Creating company N01");
+      console.log("About to create company...");
+      console.log("Current auth uid:", auth.currentUser?.uid);
+      console.log("uid variable:", uid);
+      console.log("email:", auth.currentUser?.email);
       // 3️⃣ Determine companyId
       let finalCompanyId = companyId;
 
+      let requiresApproval = true;
+
       if (mode === "create") {
         finalCompanyId = await ensureUniqueCompanyId(generatedId);
+        try {
+          // Save company info NO1
 
-        // Save company info
-        await setDoc(doc(db, "companies", finalCompanyId), {
-          companyName: form.companyName,
-          companyLogo: null,
-          createdAt: serverTimestamp(),
-          createdBy: uid,
-          createdByEmail: form.email.trim(),
-        });
+          await setDoc(doc(db, "companies", finalCompanyId), {
+            companyName: form.companyName,
+            companyLogo: null,
+            createdAt: serverTimestamp(),
+            createdBy: uid,
+            createdByEmail: form.email.trim(),
+          });
+          console.log("Company write successful");
+          console.log("Company created");
+        } catch (e) {
+          console.error("Company failed NO1");
+          console.error(e.code);
+          console.error(e.message);
+        }
 
 
+        requiresApproval = false;
 
       } else {
         // Joining existing company
         const exists = await checkCompanyExists(companyId);
         if (!exists) {
-          alert("❌ Company ID not found.");
+          setError("❌ Company ID not found.");
           setSubmitting(false);
           return;
         }
+        const usersSnap = await getDocs(
+          collection(db, "companies", finalCompanyId, "users")
+        );
+
+        const existingUsers = usersSnap.docs.map(d => d.data());
+
+        //let requiresApproval = true;
+
+        const roleKey =
+          form.role.toLowerCase().replace(/\s+/g, "_");
+
+        const approvedCompanyAdmins =
+          existingUsers.filter(
+            u =>
+              u.role === "company_admin" &&
+              u.approved === true
+          );
+
+        if (
+          mode === "join" &&
+          roleKey === "company_admin" &&
+          approvedCompanyAdmins.length === 0
+        ) {
+          requiresApproval = false;
+        }
       }
+
+
 
       // 4️⃣ Prepare user profile
       const profileData = {
@@ -180,38 +232,65 @@ export default function Register() {
         // 🔥 NEW BILLING MODEL
         employmentStatus: "active",     // active | resigned
         billingStatus: "pending",       // pending/paid
-        accessEnabled: false,           // 🚫 blocked until paid
+        accessEnabled: true,           // 🚫 blocked until paid
         trialStartDate: serverTimestamp(),
         subscriptionPhase: "trial",
         joinedAt: serverTimestamp(),
         // 🔥 ADD THIS
         lastBillingReset: serverTimestamp(),
+
+        approved: !requiresApproval,
+        approvedAt: !requiresApproval
+          ? serverTimestamp()
+          : null,
+        approvedBy: !requiresApproval ? "auto" : null,
       };
-
-
-      // 5️⃣ Save to top-level users collection
-      await setDoc(doc(db, "users", uid), {
-        ...profileData,
-        uid,
-      });
+      console.log("STEP 1 - Creating company NO1 DONE");
+      console.log("STEP 2 - Creating TOP LEVEL USER");
+      try {
+        // 5️⃣ Save to top-level users collection N02
+        await setDoc(doc(db, "users", uid), {
+          ...profileData,
+          uid,
+        });
+        console.log("User created");
+      } catch (e) {
+        console.error("Company failed NO2");
+        console.error(e.code);
+        console.error(e.message);
+      }
       console.log("Auth UID:", auth.currentUser?.uid);
       console.log("Doc UID:", uid);
+      console.log("STEP 2 - Creating TOP LEVEL USER DONE");
+      console.log("STEP 3 - Creating COMPANY");
+      try {
+        // Save to companies/{companyId}/users/{uid} NO3
+        await setDoc(doc(db, "companies", finalCompanyId, "users", uid), profileData);
+        localStorage.removeItem("registrationInProgress");
+        console.log("Company user created");
+      } catch (e) {
+        console.error("Company failed NO3");
+        console.error(e.code);
+        console.error(e.message);
+      }
+      console.log("STEP 3 - Creating COMPANY DONE");
+      //const token = await userCred.user.getIdToken();
 
-
-      // Save to companies/{companyId}/users/{uid}
-      await setDoc(doc(db, "companies", finalCompanyId, "users", uid), profileData);
-
-
-      const token = await userCred.user.getIdToken();
-
-
+      console.log("STEP 4 - SENDING EMAIL");
       // 6️⃣ Send email verification
-      await sendEmailVerification(userCred.user);
-
+      try {
+        await sendEmailVerification(userCred.user);
+        console.log(userCred.user.emailVerified);
+        console.log("✅ Verification email sent.");
+      } catch (e) {
+        console.error("❌ Verification email failed:", e);
+        setError(e.message);
+      }
+      console.log("STEP 4 - SENDING EMAIL DONE");
       // ✅ Mark registration complete BEFORE stopping loader
       setRegistrationComplete(true);
 
-      alert(
+      setError(
         `🎉 Account created!\nA verification email has been sent to: ${form.email}\n\nPlease check inbox or spam folder to verify your email before logging in.`
       );
       // 🔥 CRITICAL FIX — force clean login flow
@@ -224,12 +303,13 @@ export default function Register() {
     } catch (err) {
 
       console.error("Register error:", err);
-
+      console.error("Register error:", err.code);
       if (err.code === "auth/email-already-in-use") {
         setError("Email already exists.");
+        setSubmitting(false);
       } else {
-        //setError(err.message || "Registration failed.");
-        setError("Email already exists" || "Registration failed.");
+        setError(err.message || "Registration failed.");
+        //setError("Email already exists" || "Registration failed.");
       }
     } finally {
       // Only stop loading if NOT successful
@@ -239,72 +319,72 @@ export default function Register() {
     }
   };
 
-  const saveGoogleRefreshToken = async (refreshToken) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) throw new Error("No authenticated user");
+  // const saveGoogleRefreshToken = async (refreshToken) => {
+  //   const uid = auth.currentUser?.uid;
+  //   if (!uid) throw new Error("No authenticated user");
 
-    // 🔥 Get user profile (source of truth)
-    const userSnap = await getDoc(doc(db, "users", uid));
-    const userData = userSnap.data();
+  //   // 🔥 Get user profile (source of truth)
+  //   const userSnap = await getDoc(doc(db, "users", uid));
+  //   const userData = userSnap.data();
 
-    const companyId = userData?.companyId;
+  //   const companyId = userData?.companyId;
 
-    if (!companyId) {
-      throw new Error("User has no companyId");
-    }
+  //   if (!companyId) {
+  //     throw new Error("User has no companyId");
+  //   }
 
-    const data = {
-      googleRefreshToken: refreshToken,
-    };
+  //   const data = {
+  //     googleRefreshToken: refreshToken,
+  //   };
 
-    await setDoc(doc(db, "users", uid), data, { merge: true });
+  //   await setDoc(doc(db, "users", uid), data, { merge: true });
 
-    await setDoc(
-      doc(db, "companies", companyId, "users", uid),
-      data,
-      { merge: true }
-    );
-  };
+  //   await setDoc(
+  //     doc(db, "companies", companyId, "users", uid),
+  //     data,
+  //     { merge: true }
+  //   );
+  // };
 
-  const connectGoogleDrive = async () => {
-    try {
-      const client = window.google.accounts.oauth2.initCodeClient({
-        client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
-        scope: "https://www.googleapis.com/auth/drive",
-        ux_mode: "popup",
+  // const connectGoogleDrive = async () => {
+  //   try {
+  //     const client = window.google.accounts.oauth2.initCodeClient({
+  //       client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+  //       scope: "https://www.googleapis.com/auth/drive",
+  //       ux_mode: "popup",
 
-        callback: async (response) => {
-          try {
-            const code = response.code;
+  //       callback: async (response) => {
+  //         try {
+  //           const code = response.code;
 
-            const res = await fetch("/api/google/exchange-code", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code }),
-            });
+  //           const res = await fetch("/api/google/exchange-code", {
+  //             method: "POST",
+  //             headers: { "Content-Type": "application/json" },
+  //             body: JSON.stringify({ code }),
+  //           });
 
-            const data = await res.json();
+  //           const data = await res.json();
 
-            if (!data.refreshToken) {
-              throw new Error("No refresh token returned");
-            }
+  //           if (!data.refreshToken) {
+  //             throw new Error("No refresh token returned");
+  //           }
 
-            // ✅ STEP 5 GOES HERE (IMPORTANT)
-            await saveGoogleRefreshToken(data.refreshToken);
+  //           // ✅ STEP 5 GOES HERE (IMPORTANT)
+  //           await saveGoogleRefreshToken(data.refreshToken);
 
-            alert("Google Drive connected successfully!");
-          } catch (err) {
-            console.error(err);
-            alert("Failed to connect Google Drive");
-          }
-        },
-      });
+  //           setError("Google Drive connected successfully!");
+  //         } catch (err) {
+  //           console.error(err);
+  //           setError("Failed to connect Google Drive");
+  //         }
+  //       },
+  //     });
 
-      client.requestCode();
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  //     client.requestCode();
+  //   } catch (err) {
+  //     console.error(err);
+  //   }
+  // };
 
   if (loading) {
     return (
@@ -410,6 +490,16 @@ export default function Register() {
               return null;
             }
 
+            // Hide Company Admin when joining developer company
+            if (
+              companyId === devCompanyId &&
+              snakeRole === "company_admin"
+            ) {
+              return null;
+            }
+
+
+
             return <option key={r} value={r}>{r}</option>;
           })}
         </select>
@@ -499,13 +589,13 @@ export default function Register() {
               : "Join company & create account"}
         </button>
 
-        <button
+        {/* <button
           type="button"
           onClick={connectGoogleDrive}
           style={{ marginTop: 10 }}
         >
           Connect Google Drive
-        </button>
+        </button> */}
 
         <div style={{ marginTop: 10 }}>
           {registrationComplete ? (

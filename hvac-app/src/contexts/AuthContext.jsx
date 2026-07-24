@@ -1,9 +1,13 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { getUserPermissions } from "../config/roleAccess";
+import {
+  getDeveloperFreeAccess
+}
+  from "../firebase/developerFreeAccessService";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -22,12 +26,40 @@ export function AuthProvider({ children }) {
   const unsubscribeCompanyRef = useRef(null);
   const lastCompanyIdRef = useRef(null);
   const [permissions, setPermissions] = useState([]);
-
+  const [developerFreeAccess,
+    setDeveloperFreeAccess]
+    = useState(null);
 
   const isBlocked = userData?.accessEnabled === false;
+  const isDeveloperFreeCompany = (() => {
+
+    if (!developerFreeAccess)
+      return false;
+
+    if (!developerFreeAccess.active)
+      return false;
+
+    const now = new Date();
+
+    const start =
+      developerFreeAccess.startDate.toDate();
+
+    const end =
+      developerFreeAccess.endDate.toDate();
+
+    return (
+      now >= start &&
+      now <= end
+    );
+
+  })();
 
   //BLOCK NEW USERS AFTER 7 DAYS
   useEffect(() => {
+    if (isDeveloperFreeCompany) return;
+
+    // check if approved
+    if (userData?.approved !== true) return;
 
     if (!userData?.trialStartDate?.toDate) return;
 
@@ -78,11 +110,69 @@ export function AuthProvider({ children }) {
       disableAccess();
     }
 
-  }, [userData, currentUser, companyId]);
+  }, [userData, currentUser, companyId, isDeveloperFreeCompany]);
 
+  // MONTHLY BILLING RESET
+  useEffect(() => {
+    if (!userData || !currentUser || !companyId) return;
+
+    // Only applies to subscribed users
+    if (userData.subscriptionPhase !== "active") return;
+
+    const today = new Date();
+
+    // Only run on the 1st day of the month
+    if (today.getDate() !== 1) return;
+
+    const lastReset =
+      userData.lastBillingReset?.toDate?.() || new Date(0);
+
+    // Already reset this month
+    if (
+      lastReset.getMonth() === today.getMonth() &&
+      lastReset.getFullYear() === today.getFullYear()
+    ) {
+      return;
+    }
+
+    const resetBilling = async () => {
+      try {
+        const data = {
+          billingStatus: "pending",
+          accessEnabled: true,
+          lastBillingReset: serverTimestamp(),
+        };
+
+        await updateDoc(
+          doc(db, "users", currentUser.uid),
+          data
+        );
+
+        await updateDoc(
+          doc(
+            db,
+            "companies",
+            companyId,
+            "users",
+            currentUser.uid
+          ),
+          data
+        );
+
+        console.log("✅ Monthly billing reset completed");
+
+      } catch (err) {
+        console.error("Monthly billing reset failed:", err);
+      }
+    };
+
+    resetBilling();
+
+  }, [userData, currentUser, companyId]);
 
   //BLOCK EXISTING USERS AFTER 5DAYS
   useEffect(() => {
+    if (isDeveloperFreeCompany) return;
 
     if (!userData) return;
 
@@ -138,7 +228,7 @@ export function AuthProvider({ children }) {
 
     blockUser();
 
-  }, [userData, currentUser, companyId]);
+  }, [userData, currentUser, companyId, isDeveloperFreeCompany]);
 
   // EMAIL VERIFICATION POLLING
   useEffect(() => {
@@ -244,6 +334,14 @@ export function AuthProvider({ children }) {
       }
 
       setCurrentUser(firebaseUser);
+      // Registration is still creating Firestore documents.
+      // Don't initialize listeners yet.
+      if (localStorage.getItem("registrationInProgress") === "true") {
+        console.log("⏳ Registration in progress. Waiting...");
+
+        setAuthReady(true);
+        return;
+      }
 
       const normalizeRole = (role) =>
         role?.toLowerCase().replace(/\s+/g, "_");
@@ -276,6 +374,20 @@ export function AuthProvider({ children }) {
 
           setRole(normalizedRole || "guest");
           setCompanyId(data.companyId);
+          try {
+            const freeAccess =
+              await getDeveloperFreeAccess(
+                data.companyId
+              );
+
+            setDeveloperFreeAccess(
+              freeAccess
+            );
+          } catch (err) {
+
+            console.error("Developer Free Access:", err);
+
+          }
 
           // 🔥 THIS WILL NOW UPDATE HEADER INSTANTLY
           setDisplayName(
@@ -394,6 +506,8 @@ export function AuthProvider({ children }) {
     authReady,
     isBlocked,
     logout,
+    developerFreeAccess,
+    isDeveloperFreeCompany,
   };
 
   if (!authReady) {

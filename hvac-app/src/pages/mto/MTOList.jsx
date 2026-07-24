@@ -16,13 +16,14 @@ import { db } from "../../firebase/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
 export default function MtoPage() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [projectList, setProjectList] = useState([]);
   const [mtos, setMtos] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [staffList, setStaffList] = useState([]);
-
+  const [, setError] = useState("");
+ 
   const [formData, setFormData] = useState({
     title: "",
     projectName: "",
@@ -171,7 +172,7 @@ export default function MtoPage() {
   /* ---------------- SAVE ---------------- */
   async function handleSave() {
     if (!formData.projectName) {
-      alert("Select project");
+      setError("Select project");
       return;
     }
 

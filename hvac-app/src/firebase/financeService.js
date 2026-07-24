@@ -76,9 +76,11 @@ export const getFinanceRows = async (companyId, tabName) => {
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
-export default {
+const financeService = {
   addFinanceRow,
   updateFinanceRow,
   deleteFinanceRow,
   getFinanceRows,
 };
+
+export default financeService;

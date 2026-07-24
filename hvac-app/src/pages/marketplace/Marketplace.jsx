@@ -1,5 +1,5 @@
 // src/pages/marketplace/Marketplace.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { collection, addDoc, getDocs, getDoc, doc, updateDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
@@ -10,20 +10,22 @@ import { uploadFileToDrive } from "../../helpers/uploadFileToDrive";
 
 export default function Marketplace() {
   const { companyId, user, userData } = useAuth();
-  const [invoiceFiles, setInvoiceFiles] = useState({});
-  const [paymentNotice, setPaymentNotice] = useState("Deliveries take approx 4-5 working days.");
+  const [, setInvoiceFiles] = useState({});
   const [activePaymentPo, setActivePaymentPo] = useState(null);
   const [poList, setPoList] = useState([]);
   const [tracking, setTracking] = useState({});
   const role = userData?.role?.toLowerCase();
   const [deliveryLocation, setDeliveryLocation] = useState("Lagos");
   const [productImages, setProductImages] = useState({});
+  const [orderTracking, setOrderTracking] = useState({});
+  const [, setError] = useState("");
 
   // ===============================
   // 🆕 STORE STATE
   // ===============================
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState({
+    serialNo: "",
     name: "",
     stock: "",
     price: "",
@@ -48,7 +50,7 @@ export default function Marketplace() {
 
   const payWithPaystack = (config, onSuccess) => {
     if (!window.PaystackPop) {
-      alert("Paystack not loaded");
+      setError("Paystack not loaded");
       return;
     }
 
@@ -85,17 +87,17 @@ export default function Marketplace() {
   // Payment handler for Checkout
   const handlePaymentAndCheckout = () => {
     if (!checkout.address || !checkout.phone) {
-      alert("Fill delivery details");
+      setError("Fill delivery details");
       return;
     }
 
     if (cart.length === 0) {
-      alert("Cart is empty");
+      setError("Cart is empty");
       return;
     }
 
     if (!total || total <= 0) {
-      alert("Invalid amount");
+      setError("Invalid amount");
       return;
     }
 
@@ -104,8 +106,8 @@ export default function Marketplace() {
         reference: "ORDER_" + Date.now(),
         email: userData?.email || user?.email,
         amount: grandTotal * 100, //i replaced amount with grandtotal
-        key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
-        //key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
+        //key: "pk_live_6a2efdfc277c468b57e70f6462c7c330181d1d6c",
+        key: "pk_test_e0ccd9771cc0086a1290ff5fd46ee1431bb64e4a",
         type: "checkout",
       },
       (response) => {
@@ -126,12 +128,12 @@ export default function Marketplace() {
     console.log("BOQ SNAPSHOT:", po.boqSnapshot);
 
     if (!amount || isNaN(amount) || amount <= 0) {
-      alert("Invalid PO amount");
+      setError("Invalid PO amount");
       return;
     }
 
     if (!userData?.email) {
-      alert("User email missing");
+      setError("User email missing");
       return;
     }
 
@@ -174,10 +176,16 @@ export default function Marketplace() {
     const unsub = onSnapshot(
       collection(db, "products"),
       (snap) => {
-        const data = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        const data = snap.docs
+          .map(d => ({
+            id: d.id,
+            ...d.data(),
+          }))
+          .sort(
+            (a, b) =>
+              Number(a.serialNo || 999999) -
+              Number(b.serialNo || 999999)
+          );
         setProducts(prev => {
           const prevStr = JSON.stringify(prev);
           const nextStr = JSON.stringify(data);
@@ -199,81 +207,6 @@ export default function Marketplace() {
     return () => unsub();
   }, []);
 
-  // const getDriveFile = (fileId, refreshToken) => {
-  //   return window.electron.invoke("get-drive-file", {
-  //     fileId,
-  //     refreshToken,
-  //   });
-  // };
-
-  // useEffect(() => {
-  //   if (!products.length || !userData?.googleRefreshToken) return;
-
-  //   let cancelled = false;
-
-  //   const loadImages = async () => {
-  //     const failedCache = new Set();
-  //     const imageCache = new Map();
-
-  //     const results = await Promise.all(
-  //       products.map(async (p) => {
-  //         if (!p.imageFileId) return null;
-
-  //         const fileId = p.imageFileId; // ❗ FIXED (you were using undefined variable)
-
-  //         try {
-  //           if (imageCache.has(fileId)) return imageCache.get(fileId);
-  //           if (failedCache.has(fileId)) return null;
-
-  //           if (!window.electron?.invoke) {
-  //             console.error("Electron invoke not available");
-  //             return;
-  //           }
-
-  //           const result = await getDriveFile(p.imageFileId, userData.googleRefreshToken);
-  //           // const result = await window.electron.invoke("get-drive-image",
-  //           //   {
-  //           //     fileId: p.imageFileId,
-  //           //     refreshToken: userData.googleRefreshToken,
-  //           //   }
-  //           // );
-
-  //           console.log("Refresh token:", userData?.googleRefreshToken);
-  //           console.log("Products:", products);
-  //           console.log("Loading image:", p.name, p.imageFileId);
-  //           console.log("IMAGE RESULT:", p.name, result);
-
-  //           if (!result?.success) {
-  //             failedCache.add(fileId);
-  //             return null;
-  //           }
-
-  //           imageCache.set(fileId, result.url);
-  //           return [p.id, result.url];
-
-
-  //         } catch (err) {
-  //           console.error(err);
-  //           failedCache.add(fileId);
-  //           return null;
-  //         }
-  //       })
-  //     );
-
-  //     if (cancelled) return;
-
-  //     const map = Object.fromEntries(results.filter(Boolean));
-  //     setProductImages(map);
-
-  //   };
-
-  //   loadImages();
-
-  //   return () => {
-  //     cancelled = true;
-  //   };
-
-  // }, [products, userData?.googleRefreshToken]);
 
   useEffect(() => {
     const map = {};
@@ -299,25 +232,8 @@ export default function Marketplace() {
     setProductImages(map);
   }, [products]);
 
-  // useEffect(() => {
-  //   const runCheck = async () => {
-  //     if (!products.length) return;
 
-  //     for (const product of products) {
-  //       if (!product.imageFileId) continue;
-
-  //       const res = await getDriveFile(product.imageFileId);
-
-  //       if (!res.ok) {
-  //         console.log("BAD FILE:", product.imageFileId);
-  //       }
-  //     }
-  //   };
-
-  //   runCheck();
-  // }, [products]);
-
-  const loadPOs = async () => {
+  const loadPOs = useCallback(async () => {
     const snap = await getDocs(
       collection(db, "companies", companyId, "purchaseOrders")
     );
@@ -346,79 +262,58 @@ export default function Marketplace() {
       }
     });
     setInvoiceFiles(invoiceMap);
-  };
+  }, [companyId]);
 
-  /* -----------------------------
-     Load Purchase Orders
-  ----------------------------- */
-  useEffect(() => {
-    if (!companyId) return;
 
-    let active = true;
+  const loadOrders = useCallback(async () => {
+    try {
+      const companySnap = await getDoc(doc(db, "companies", companyId));
 
-    const loadData = async () => {
-      if (!active) return;
+      const companyName = companySnap.exists()
+        ? companySnap.data().companyName
+        : "--";
 
-      setLoading(true);
-
-      if (role === "developer") {
-        await loadAllPOs();
-        await loadAllOrders();
-      } else {
-        await loadPOs();
-        await loadOrders();
-      }
-
-      if (active) setLoading(false);
-    };
-
-    loadData();
-
-    return () => {
-      active = false;
-    };
-  }, [companyId, role]);
-
-  //LOAD ALL PURCHASE ORDERS (DEVELOPER)
-  const loadAllPOs = async () => {
-    const companiesSnap = await getDocs(collection(db, "companies"));
-
-    let allPOs = [];
-    let track = {};
-
-    for (const company of companiesSnap.docs) {
-      const companyId = company.id;
-      const companyName = company.data().companyName || "--";
-
-      const poSnap = await getDocs(
-        collection(db, "companies", companyId, "purchaseOrders")
+      const snap = await getDocs(
+        collection(db, "companies", companyId, "orders")
       );
 
-      const poData = poSnap.docs.map(d => ({
-        id: d.id,
-        companyId,
-        companyName,
-        paymentStatus: d.data().paymentStatus || false,
-        ...d.data(),
-      })).filter(po => po.sentToMarketplace);
+      // ✅ STEP 1: build orders first
+      const data = snap.docs.map((d) => {
+        const order = d.data();
+        const createdAt = order.createdAt;
 
-      allPOs = [...allPOs, ...poData];
+        let date = "--";
 
-      poData.forEach(po => {
-        track[po.id] = po.tracking || {};
+        if (createdAt?.toDate) {
+          date = createdAt.toDate().toLocaleString();
+        } else if (createdAt?.seconds) {
+          date = new Date(createdAt.seconds * 1000).toLocaleString();
+        }
+
+        return {
+          id: d.id,
+          companyId,
+          companyName,
+          ...order,
+          date,
+        };
       });
+
+      // ✅ STEP 2: build tracking AFTER data exists
+      const track = {};
+      data.forEach((o) => {
+        track[o.id] = o.tracking || {};
+      });
+
+      setOrderTracking(track);
+      setOrders(data);
+
+    } catch (err) {
+      console.error("🔥 Error loading orders:", err);
     }
+  }, [companyId]);
 
-    setPoList(
-      allPOs.sort(
-        (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
-      )
-    );
-
-    setTracking(track);
-  };
-
-  const loadAllOrders = async () => {
+  const loadAllOrders = useCallback(async () => {
     try {
       const companiesSnap = await getDocs(collection(db, "companies"));
 
@@ -467,14 +362,89 @@ export default function Marketplace() {
     } catch (err) {
       console.error("🔥 Error loading all orders:", err);
     }
-  };
+  }, []);
+
+  //LOAD ALL PURCHASE ORDERS (DEVELOPER)
+  const loadAllPOs = useCallback(async () => {
+    const companiesSnap = await getDocs(collection(db, "companies"));
+
+    let allPOs = [];
+    let track = {};
+
+    for (const company of companiesSnap.docs) {
+      const companyId = company.id;
+      const companyName = company.data().companyName || "--";
+
+      const poSnap = await getDocs(
+        collection(db, "companies", companyId, "purchaseOrders")
+      );
+
+      const poData = poSnap.docs.map(d => ({
+        id: d.id,
+        companyId,
+        companyName,
+        paymentStatus: d.data().paymentStatus || false,
+        ...d.data(),
+      })).filter(po => po.sentToMarketplace);
+
+      allPOs = [...allPOs, ...poData];
+
+      poData.forEach(po => {
+        track[po.id] = po.tracking || {};
+      });
+    }
+
+    setPoList(
+      allPOs.sort(
+        (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
+      )
+    );
+
+    setTracking(track);
+  }, []);
+
+  /* -----------------------------
+     Load Purchase Orders
+  ----------------------------- */
+  useEffect(() => {
+    if (!companyId) return;
+
+    let active = true;
+
+    const loadData = async () => {
+      if (!active) return;
+
+      setLoading(true);
+      const isMarketplaceAdmin =
+        ["developer", "market_agent"].includes(role);
+      if (isMarketplaceAdmin) {
+        await loadAllPOs();
+        await loadAllOrders();
+      } else {
+        await loadPOs();
+        await loadOrders();
+      }
+
+      if (active) setLoading(false);
+    };
+
+    loadData();
+
+    return () => {
+      active = false;
+    };
+  }, [companyId, role, loadPOs, loadOrders, loadAllPOs, loadAllOrders]);
+
+
+
+
 
   /* -----------------------------
      MTO LOAER FUNCTON
   ----------------------------- */
   const downloadPoPdf = async (po) => {
     if (!po.mtoId) {
-      alert("MTO not linked to this PO");
+      setError("MTO not linked to this PO");
       return;
     }
 
@@ -484,7 +454,7 @@ export default function Marketplace() {
       po.mtoSnapshot?.plumbing?.length;
 
     if (!mtoRows) {
-      alert("MTO snapshot missing");
+      setError("MTO snapshot missing");
       return;
     }
 
@@ -505,7 +475,7 @@ export default function Marketplace() {
     ----------------------------- */
   const downloadInvoicePdf = async (po) => {
     if (!po.mtoId) {
-      alert("MTO not linked to this PO");
+      setError("MTO not linked to this PO");
       return;
     }
 
@@ -515,7 +485,7 @@ export default function Marketplace() {
       po.mtoSnapshot?.plumbing?.length;
 
     if (!hasMto) {
-      alert("MTO snapshot missing");
+      setError("MTO snapshot missing");
       return;
     }
 
@@ -542,7 +512,7 @@ export default function Marketplace() {
 
 
   /* -----------------------------
-     Toggle tracking slider
+     Toggle tracking slider PO
   ----------------------------- */
   const toggleTracking = async (po, field) => {
     const poId = po.id;
@@ -566,67 +536,33 @@ export default function Marketplace() {
 
     await updateDoc(ref, { tracking: updated });
   };
+
   /* -----------------------------
-       Update Invoice Helper for one PO
-    ----------------------------- */
-  const updateInvoiceFiles = async (poId, files) => {
-    const safeFiles = files
-      .filter(f => !f.__pendingFile)
-      .map(f => ({
-        name: f.name,
-        url: f.url,
-        fileId: f.fileId,
-      }));
+    Toggle tracking slider ORDERS
+ ----------------------------- */
+  const toggleOrderTracking = async (o, field) => {
+    const orderId = o.id;
 
-    setInvoiceFiles(prev => ({ ...prev, [poId]: safeFiles }));
+    const current = orderTracking[orderId] || {};
 
-    await updateDoc(
-      doc(db, "companies", companyId, "purchaseOrders", poId),
-      { invoiceFiles: safeFiles }
+    const updated = {
+      ...current,
+      [field]: !current[field],
+    };
+
+    setOrderTracking(prev => ({ ...prev, [orderId]: updated }));
+
+    const ref = doc(
+      db,
+      "companies",
+      o.companyId,
+      "orders",
+      orderId
     );
+
+    await updateDoc(ref, { tracking: updated });
   };
 
-  /* -----------------------------
-     Generate Invoice (placeholder)
-  ----------------------------- */
-  const generateInvoice = async (po) => {
-    if (!po.mtoSnapshot) return alert("MTO Snapshot missing in PO");
-
-    const blob = generateInvoicePdfBlob({
-      po,
-      mto: po.mtoSnapshot,
-      deliveryFee: po.deliveryFee || 0,
-      grandTotal:
-        Number(po.totalAmount || 0) +
-        Number(po.deliveryFee || 0),
-    });
-    const totalAmount =
-      po.grandTotal?.total ||
-      po.totalAmount ||
-      0;
-
-    await updateDoc(
-      doc(db, "companies", companyId, "purchaseOrders", po.id),
-      {
-        invoiceFiles: [], // optional
-        invoiceTotal: totalAmount, // 👈 THIS IS WHERE IT GOES
-      }
-    );
-    const file = new File([blob], `INV-${po.id}.pdf`, { type: "application/pdf" });
-
-    // Mark as pending file for MultiUploadWithDelete
-    updateInvoiceFiles(po.id, [
-      ...(invoiceFiles[po.id] || []),
-      { __pendingFile: file },
-    ]);
-  };
-
-  /* -----------------------------
-     Upload receipt (placeholder)
-  ----------------------------- */
-  const uploadReceipt = (poId, file) => {
-    alert(`Receipt uploaded for PO ${poId}`);
-  };
 
   // ===============================
   // 🆕 STORE FUNCTIONS
@@ -640,6 +576,7 @@ export default function Marketplace() {
     console.log("FORM BEFORE SAVE:", form);
     try {
       const newProduct = {
+        serialNo: form.serialNo,
         name: form.name,
         stock: Number(form.stock),
         price: Number(form.price),
@@ -658,7 +595,7 @@ export default function Marketplace() {
 
       setQtySelection((prev) => ({ ...prev, [docRef.id]: 0 }));
 
-      setForm({ name: "", stock: "", price: "", unit: "", unitKg: "", description: "", imageFileId: "", discipline: "mechanical" });
+      setForm({ serialNo: "", name: "", stock: "", price: "", unit: "", unitKg: "", description: "", imageFileId: "", discipline: "mechanical" });
 
     } catch (err) {
       console.error("🔥 Error adding product:", err);
@@ -762,7 +699,7 @@ export default function Marketplace() {
 
     const deliveryFee = baseFee + totalWeight * perKg;
 
-    const grandTotal = total + deliveryFee;
+    //const grandTotal = total + deliveryFee;
 
     console.log("AUTH COMPANY ID:", companyId);
     console.log("USER DOC COMPANY ID:", userData?.companyId);
@@ -771,79 +708,50 @@ export default function Marketplace() {
     console.log("SAVE ORDER VALUES", {
       total,
       deliveryFee,
-      grandTotal,
+      //grandTotal,
       cart,
       companyId,
       cartLength: cart.length,
     });
     try {
+      try {
+        await saveOrder({
+          companyId,
+          cart,
+          total,          // cart subtotal
+          deliveryFee,
+          //grandTotal,             // total + delivery
+          deliveryLocation,
+          address: checkout.address,
+          phone: checkout.phone,
+          paymentRef,
+          createdAt: serverTimestamp(),
+          createdBy: {
+            uid: user?.uid || "",
+            email: user?.email || "",
+          },
+        });
+        console.log("SAVE ORDER OK");
+      } catch (err) {
+        console.error("SAVE ORDER FAILED:", err);
+        return;
+      }
 
-      const newOrder = await saveOrder({
-        companyId,
-        cart,
-        total,          // cart subtotal
-        deliveryFee,
-        grandTotal,             // total + delivery
-        deliveryLocation,
-        address: checkout.address,
-        phone: checkout.phone,
-        paymentRef,
-        createdAt: serverTimestamp(),
-
-        createdBy: {
-          uid: user?.uid || "",
-          email: user?.email || "",
-        },
-      });
-
-      await updateStockAfterOrder(cart);
-      await loadOrders();
+      try {
+        await updateStockAfterOrder(cart);
+        await loadOrders();
+        console.log("STOCK UPDATE OK");
+      } catch (err) {
+        console.error("STOCK UPDATE FAILED:", err);
+      }
 
       setCart([]);
       setCheckout({ address: "", phone: "" });
 
-      alert("Order saved successfully!");
+      setError("Order saved successfully!");
 
     } catch (err) {
       console.error("🔥 Checkout error:", err);
-    }
-  };
-
-  const loadOrders = async () => {
-    try {
-      const companySnap = await getDoc(doc(db, "companies", companyId));
-      const companyName = companySnap.exists()
-        ? companySnap.data().companyName
-        : "--";
-
-      const snap = await getDocs(
-        collection(db, "companies", companyId, "orders")
-      );
-
-      const data = snap.docs.map((d) => {
-        const order = d.data();
-        const createdAt = order.createdAt;
-
-        let date = "--";
-
-        if (createdAt?.toDate) {
-          date = createdAt.toDate().toLocaleString();
-        } else if (createdAt?.seconds) {
-          date = new Date(createdAt.seconds * 1000).toLocaleString();
-        }
-
-        return {
-          id: d.id,
-          companyId,
-          companyName,
-          ...order,
-          date,
-        };
-      });
-
-      setOrders(data);
-    } catch (err) {
-      console.error("🔥 Error loading orders:", err);
     }
   };
 
@@ -873,9 +781,13 @@ export default function Marketplace() {
       }));
     } catch (err) {
       console.error("Upload failed:", err);
-      alert("Image upload failed");
+      setError("Image upload failed");
     }
   };
+
+  //   if (!companyId || !cart?.length) {
+  //   throw new Error("Invalid order data");
+  // }
 
   if (loading) {
     return (
@@ -919,12 +831,18 @@ export default function Marketplace() {
       <div className="card mb-4 shadow-sm">
         <div className="card-body">
           <h5>Payment Instructions</h5>
-          <textarea
+          {/* <textarea
             className="form-control"
             rows="3"
             value={paymentNotice}
             onChange={(e) => setPaymentNotice(e.target.value)}
-          />
+          /> */}
+          <p>
+            Deliveries take approx 4-5 working days.{" "}
+            <span style={{ color: "red", fontWeight: "bold" }}>
+              Transaction charges may be added to grand total.
+            </span>
+          </p>
         </div>
       </div>
 
@@ -1024,7 +942,7 @@ export default function Marketplace() {
       {role && (
         <div className="card shadow-sm">
           <div className="card-body">
-            <h5 className="mb-3">Item Tracking</h5>
+            <h5 className="mb-3"> PO Item Tracking</h5>
 
             <table className="table table-bordered">
               <thead className="table-light">
@@ -1127,6 +1045,7 @@ export default function Marketplace() {
       )
       }
 
+
       {/* ===============================
     🆕 STORE FRONT MODULE
 ================================ */}
@@ -1145,7 +1064,14 @@ export default function Marketplace() {
                   onChange={handleProductImage}
                 />
               </div>
-
+              <div className="col-md-3">
+                <input type="number" className="form-control" name="serialno" placeholder="serialNo" value={form.serialNo || ""} onChange={(e) =>
+                  setForm({
+                    ...form,
+                    serialNo: Number(e.target.value),
+                  })
+                } />
+              </div>
               <div className="col-md-3">
                 <input className="form-control" name="name" placeholder="Name" value={form.name} onChange={handleChange} />
               </div>
@@ -1181,32 +1107,6 @@ export default function Marketplace() {
           </div>
         )}
 
-        {/* STORE LIST */}
-        {/* <div className="row">
-          {products.map((p) => (
-            <div className="col-md-3 mb-3" key={p.id}>
-              <div className="card h-100">
-                <div className="card-body">
-                  <h5>{p.name}</h5>
-                  <p>{p.description}</p>
-                  <p>Stock: {p.stock}</p>
-                  <p>Price: ₦{p.price}</p>
-
-                  <div className="d-flex gap-2 mb-2">
-                    <button className="btn btn-secondary" onClick={() => updateStoreQty(p.id, -1, p.stock)}>-</button>
-                    <span>{qtySelection[p.id] || 0}</span>
-                    <button className="btn btn-secondary" onClick={() => updateStoreQty(p.id, 1, p.stock)}>+</button>
-                  </div>
-
-                  <button className="btn btn-success w-100" onClick={() => addToCart(p)}>
-                    Add to Cart
-                  </button>
-
-                </div>
-              </div>
-            </div>
-          ))}
-        </div> */}
         <div className="mt-3">
           {["mechanical", "electrical", "plumbing"].map((group) => (
             <div key={group} className="mb-4">
@@ -1227,21 +1127,6 @@ export default function Marketplace() {
                       <div className="card h-100">
                         <div className="card-body">
 
-                          {/* {products.map((product) => (
-                            <div key={product.id}>
-                              {productImages[product.id] && (
-                                <img
-                                  src={productImages[product.id]}
-                                  alt={product.name}
-                                  style={{
-                                    width: "100%",
-                                    height: 200,
-                                    objectFit: "cover",
-                                  }}
-                                />
-                              )}
-                            </div>
-                          ))} */}
                           {/* FIXED IMAGE BLOCK */}
                           {productImages[p.id] && (
                             <img
@@ -1365,6 +1250,7 @@ export default function Marketplace() {
             <thead className="table-light">
               <tr>
                 <th>Company</th>
+                <th>Order ID</th>
                 <th>Date</th>
                 <th>Items + Qty + Unit Price</th>
                 <th>Amount</th>
@@ -1379,6 +1265,7 @@ export default function Marketplace() {
                 <tr key={o.id}>
                   {/* <td>{o.companyName}</td> */}
                   <td>{o.companyId}</td>
+                  <td>{o.orderId || o.id}</td>
                   <td>{formatDate(o.createdAt)}</td>
                   <td>
                     {(o.items || []).map((i) => (
@@ -1407,7 +1294,64 @@ export default function Marketplace() {
             </tbody>
           </table>
         </div>
+        {/* ITEM TRACKING */}
+        {role && (
+          <div className="card shadow-sm">
+            <div className="card-body">
+              <h5 className="mb-3">Orders Item Tracking</h5>
+
+              <table className="table table-bordered">
+                <thead className="table-light">
+                  <tr>
+                    <th>Order ID</th>
+                    <th>Order Received</th>
+                    <th>Warehouse</th>
+                    <th>Packaged</th>
+                    <th>Dispatched</th>
+                    <th>Received at Site</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {orders.map(o => (
+                    <tr key={o.id}>
+                      <td>{o.orderId}</td>
+
+                      {[
+                        "received",
+                        "warehouse",
+                        "packaged",
+                        "dispatched",
+                        "site",
+                      ].map(field => (
+                        <td key={field} className="text-center">
+                          <div className="form-check form-switch d-flex justify-content-center">
+                            <input
+                              className="form-check-input"
+                              type="checkbox"
+                              checked={orderTracking[o.id]?.[field] || false}
+                              onChange={() => {
+                                if (!["developer", "app_support", "market_agent"].includes(role)) {
+                                  return; // read-only users cannot toggle
+                                }
+                                toggleOrderTracking(o, field);
+                              }}
+                              disabled={!["developer", "app_support", "market_agent"].includes(role)}
+                            />
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+            </div>
+          </div>
+        )}
       </div>
     </div >
   );
 }
+
+

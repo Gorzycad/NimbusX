@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { ROLE_ACCESS } from "../../config/roleAccess";
 import { useEffect } from "react";
 import { formatRole } from "../../helpers/formatRole";
 import {
@@ -38,12 +37,14 @@ import {
   File, //use for Handover
 
 } from "lucide-react";
-import { getAllowedPages } from "../../helpers/getAllowedPages";
+
 
 export default function Sidebar() {
   const [version, setVersion] = useState("");
   const navigate = useNavigate();
   const { user, role, logout, userData } = useAuth();
+  const { permissions } = useAuth();
+
 
 
 
@@ -218,13 +219,7 @@ export default function Sidebar() {
   ];
 
   // Determine allowed pages for role
-  const allPagesFlat = sections.flatMap((s) => s.pages);
-  //const allowedPages = ROLE_ACCESS[normalizedRole]?.map(p => p.toLowerCase()) || [];
-  const allowedPages = getAllowedPages(
-    normalizedRole,
-    userData?.customPermissions
-  );
-  const isSuperUser = ["ceo", "director"].includes(normalizedRole);
+  const allowedPages = permissions || [];
   const isDeveloper = ["developer"].includes(normalizedRole);
   console.log("Role:", normalizedRole);
   console.log("Allowed Pages:", allowedPages);

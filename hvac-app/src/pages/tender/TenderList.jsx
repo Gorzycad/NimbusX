@@ -1,5 +1,5 @@
 //src/pages/tender/TenderList.jsx
-import React, { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 
 import {
@@ -11,7 +11,6 @@ import {
 
 import { getLeads } from "../../firebase/leadsService";
 
-import MultiUploadWithDelete from "../leads/LeadsFileUpload";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
 import UploadPage from "../leads/LeadsFileUpload";
@@ -44,13 +43,14 @@ function deepClean(obj) {
 }
 
 export default function TenderList() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [tenders, setTenders] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(false);
-
+  const [, setError] = useState("");
+  
   const [formData, setFormData] = useState({
     title: "",
     projectName: "",
@@ -131,12 +131,12 @@ export default function TenderList() {
   ----------------------------- */
   const handleSave = async () => {
     if (!formData.title.trim()) {
-      alert("Tender title is required");
+      setError("Tender title is required");
       return;
     }
 
     if (!formData.projectName) {
-      alert("Project name is required");
+      setError("Project name is required");
       return;
     }
 
@@ -362,21 +362,7 @@ export default function TenderList() {
                                   cursor: "pointer",
                                   textDecoration: "underline"
                                 }}
-                                // onClick={async () => {
-                                //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                                //   const token = tokens?.access_token;
-
-                                //   if (!token) {
-                                //     alert("You must login first");
-                                //     return;
-                                //   }
-
-                                //   const result = await window.electron.downloadFile(f.fileId, token, f.name)
-
-                                //   if (!result?.success) {
-                                //     alert("Download failed");
-                                //   }
-                                // }}
+                              
                                 onClick={async () => {
                                   const result = await window.electron.downloadFile(
                                     f.fileId,
@@ -385,7 +371,7 @@ export default function TenderList() {
                                   );
 
                                   if (!result?.success) {
-                                    alert("Download failed");
+                                    setError("Download failed");
                                   }
                                 }}
                               >

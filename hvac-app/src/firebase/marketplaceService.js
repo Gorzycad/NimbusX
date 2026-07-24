@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
+
 /**
  * Save Order after successful payment
  */
@@ -68,6 +69,7 @@ import { db } from "../firebase/firebase";
 //     ...savedSnap.data(),
 //   };
 // };
+
 export const saveOrder = async ({
   companyId,
   cart,
@@ -84,7 +86,12 @@ export const saveOrder = async ({
   const safeTotal = Number(total || 0);
   const safeDeliveryFee = Number(deliveryFee || 0);
 
+  const tempId = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+  const orderId = `ORD-${new Date().getFullYear()}-${tempId}`;
+
   const orderData = {
+    companyId,
     items: cart,
     total: safeTotal,
     deliveryFee: safeDeliveryFee,
@@ -103,7 +110,13 @@ export const saveOrder = async ({
     orderData
   );
 
-  return docRef.id;
+  await updateDoc(docRef, { orderId });
+
+  return {
+    id: docRef.id,
+    orderId,
+  };
+  
 };
 /**
  * Update product stock after order

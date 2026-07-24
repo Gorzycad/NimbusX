@@ -25,12 +25,12 @@ import {
   calcSprinklerSpacing,
   calcEquivalentLength,
   calcStandpipeLoss,
-  calcConduitSizing,
+  //calcConduitSizing,
   calcDesignCheckTool,
   calcGeneratorSizing,
   calcMotorStartingCurrent,
   calcPFCorrection,
-  calcCurrent,
+  //calcCurrent,
   calcLightingLumen,
   calcLuxRecommendation,
   calcEarthingResistance,
@@ -41,13 +41,15 @@ import {
 import { getLeads } from "../../firebase/leadsService";
 import { useAuth } from "../../contexts/AuthContext";
 
+
+
 /* =========================================================
    DISCIPLINE + CALCULATOR CONFIG
 ========================================================= */
 const parameterOptions = [
   { key: 'rh', label: 'Relative Humidity', unit: '%' },
-  { key: 'wb', label: 'Wet Bulb', unit: '°F' },
-  { key: 'dp', label: 'Dew Point', unit: '°F' },
+  { key: 'wb', label: 'Wet Bulb', unit: '°C' },
+  { key: 'dp', label: 'Dew Point', unit: '°C' },
   { key: 'w', label: 'Humidity Ratio', unit: 'lb/lb' },
 ];
 
@@ -57,7 +59,9 @@ const sidebarSections = [
     label: 'Air-Conditioning',
     items: [
       { key: 'psychrometric', label: 'Psychrometric' },
-      { key: 'airflow-calc', label: 'Airflow (CFM/TR/ΔT)' },
+      { key: 'ach-rec', label: 'ACH Recommendation' },
+      { key: 'airflow-calc', label: 'Airflow (CFM/TR/ACH)' },
+      { key: 'ventilation', label: 'Ventilation + ACH' },
       //{ key: 'cooling-coil', label: 'Cooling Coil' },
       //{ key: 'ahu-sat', label: 'AHU Supply Air Temp' },
       { key: 'duct-sizer', label: 'Duct Sizer' },
@@ -66,9 +70,8 @@ const sidebarSections = [
       //{ key: 'fan-power', label: 'Fan Power' },
       //{ key: 'fan-laws', label: 'Fan Laws (VFD)' },
       { key: 'hvac-pipe', label: 'Pipe Sizer (CHW/CW)' },
-      { key: 'pump-head', label: 'Pump Head' },
+      //{ key: 'pump-head', label: 'Pump Head' },
       //{ key: 'heat-load', label: 'Heat Load (Quick)' },
-      { key: 'ventilation', label: 'Ventilation + ACH' },
       //{ key: 'fresh-air', label: 'Fresh Air Requirement' },
       //{ key: 'chiller-cop', label: 'Chiller COP / Efficiency' },
       //{ key: 'cooling-tower', label: 'Cooling Tower' },
@@ -80,7 +83,6 @@ const sidebarSections = [
       { key: 'equip-heat', label: 'Equipment Heat Gain' },
       { key: 'heating-load', label: 'Heating Load' },
       //{ key: 'insulation', label: 'Insulation Thickness' },
-      { key: 'ach-rec', label: 'ACH Recommendation' },
     ],
   },
 
@@ -185,7 +187,7 @@ const pageMeta = {
   },
   'airflow-calc': {
     title: 'Airflow Calculator',
-    subtitle: 'CFM from TR, sensible heat, or ΔT method',
+    subtitle: 'CFM from TR, sensible heat, or ACH Method',
     description:
       'Calculate required supply airflow from cooling capacity, sensible heat load, or temperature difference. Three independent methods support common HVAC sizing checks.',
     accent: '#2563EB',
@@ -607,9 +609,10 @@ export default function DesignTab() {
   const [atm, setAtm] = useState('101.325');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { companyId, user, role, displayName } = useAuth();
-  const [projectList, setProjectList] = useState([]);
-
+  const { companyId } = useAuth();
+  const [, setProjectList] = useState([]);
+  
+  
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
@@ -887,7 +890,7 @@ function PsychrometricPage({
       atmPressure: parseFloat(atm) || 101.325,
       isIP: false, // Currently using SI (°C)
     });
-  }, [result, dbt, paramKey, paramValue, atm]);
+  }, [result, dbt, paramKey, paramValue, atm, selectedParam]);
 
   return (
     <div style={psychrometricGridStyle}>
@@ -993,11 +996,11 @@ function PsychrometricPage({
 function AirflowCalcPage() {
   const [tr, setTr] = useState('10');
   const [cfmtr, setCfmtr] = useState('400');
-  const [sh, setSh] = useState('40000');
-  const [troom, setTroom] = useState('75');
-  const [tsup, setTsup] = useState('55');
-  const [q, setQ] = useState('4000');
-  const [dt, setDt] = useState('20');
+  const [sh, setSh] = useState('4000');
+  const [troom, setTroom] = useState('24');
+  const [tsup, setTsup] = useState('17.1');
+  const [q, setQ] = useState('20');
+  const [dt, setDt] = useState('6');
   const [result, setResult] = useState(null);
 
   const calculate = () => {
@@ -1006,16 +1009,17 @@ function AirflowCalcPage() {
     const shN = parseFloat(sh);
     const troomN = parseFloat(troom);
     const tsupN = parseFloat(tsup);
-    const qN = parseFloat(q);
-    const dtN = parseFloat(dt);
-    if ([trN, cfmtrN, shN, troomN, tsupN, qN, dtN].some((v) => Number.isNaN(v))) {
+    const volumeN = parseFloat(q);
+    const achN = parseFloat(dt);
+    if ([trN, cfmtrN, shN, troomN, tsupN, volumeN, achN].some((v) => Number.isNaN(v))) {
       setResult(null);
       return;
     }
     const r1 = trN * cfmtrN;
     const deltaT = troomN - tsupN;
-    const r2 = deltaT > 0 ? shN / (SHF * deltaT) : null;
-    const r3 = qN * SHF * dtN;
+    const r2 = deltaT > 0 ? (shN / (1.2 * deltaT)) / 0.471 : null;
+    //const r3 = qN * SHF * dtN;
+    const r3 = volumeN * achN * 0.588;
     const warnings = [];
     if (r1 < 100) warnings.push('Method 1 result is low. Verify TR and CFM/TR input.');
     if (deltaT < 8) warnings.push('Small ΔT means high airflow. Check room and supply temperatures.');
@@ -1053,17 +1057,17 @@ function AirflowCalcPage() {
           <div style={inputGroupStyle}>
             <label style={labelStyle}>Sensible heat load</label>
             <input type="number" value={sh} onChange={(e) => setSh(e.target.value)} style={inputStyle} />
-            <span style={inputUnitStyle}>BTU/hr</span>
+            <span style={inputUnitStyle}>W</span>
           </div>
           <div style={inputGroupStyle}>
             <label style={labelStyle}>Room temperature</label>
             <input type="number" value={troom} onChange={(e) => setTroom(e.target.value)} style={inputStyle} />
-            <span style={inputUnitStyle}>°F</span>
+            <span style={inputUnitStyle}>°C</span>
           </div>
           <div style={inputGroupStyle}>
             <label style={labelStyle}>Supply air temperature</label>
             <input type="number" value={tsup} onChange={(e) => setTsup(e.target.value)} style={inputStyle} />
-            <span style={inputUnitStyle}>°F</span>
+            <span style={inputUnitStyle}>°C</span>
           </div>
         </div>
       </div>
@@ -1071,18 +1075,18 @@ function AirflowCalcPage() {
       <div style={panelStyle}>
         <div style={panelHeaderStyle}>
           <div style={panelAccentStyle} />
-          <div style={panelTitleStyle}>Method 3 - From Known Airflow</div>
+          <div style={panelTitleStyle}>Method 3 - From Room Air Change Rate</div>
         </div>
         <div style={panelBodyStyle}>
           <div style={inputGroupStyle}>
-            <label style={labelStyle}>Known airflow</label>
+            <label style={labelStyle}>Room Volume</label>
             <input type="number" value={q} onChange={(e) => setQ(e.target.value)} style={inputStyle} />
-            <span style={inputUnitStyle}>CFM</span>
+            <span style={inputUnitStyle}>m³</span>
           </div>
           <div style={inputGroupStyle}>
-            <label style={labelStyle}>Room − supply ΔT</label>
+            <label style={labelStyle}>Room − Air Changes per Hour</label>
             <input type="number" value={dt} onChange={(e) => setDt(e.target.value)} style={inputStyle} />
-            <span style={inputUnitStyle}>°F</span>
+            <span style={inputUnitStyle}>ACH</span>
           </div>
         </div>
         <button style={{ ...calculateButtonStyle, marginTop: 16 }} type="button" onClick={calculate}>
@@ -1102,9 +1106,9 @@ function AirflowCalcPage() {
                 <ResultRow label="Method 1 - From TR" value={`${result.r1.toFixed(0)} CFM`} />
                 <ResultRow
                   label="Method 2 - From sensible heat"
-                  value={result.r2 ? `${result.r2.toFixed(0)} CFM` : 'Invalid – SAT must be lower than room'}
+                  value={result.r2 != null ? `${result.r2.toFixed(0)} CFM` : 'Invalid – SAT must be lower than room'}
                 />
-                <ResultRow label="Method 3 - Capacity of airflow" value={`${(result.r3 / 3412).toFixed(2)} kW`} />
+                <ResultRow label="Method 3 - From Room Air Change Rate" value={`${result.r3.toFixed(0)} CFM`} />
                 {result.warnings.length > 0 && (
                   <div style={resultSummaryStyle}>
                     {result.warnings.map((w, idx) => (
@@ -1160,7 +1164,7 @@ function DuctSizerPage() {
               placeholder="e.g. 1000"
               style={inputStyle}
             />
-            <span style={inputUnitStyle}>L/s</span>
+            <span style={inputUnitStyle}>CFM</span>
           </div>
           <div style={inputGroupStyle}>
             <label style={labelStyle}>Target Friction Rate</label>
@@ -1235,8 +1239,8 @@ function DuctSizerPage() {
               {result.deqSize && <ResultRow label="Equivalent Diameter" value={result.deqSize} />}
               <ResultRow label="Velocity" value={`${result.velocity.toFixed(2)} m/s`} />
               <ResultRow label="Friction Rate" value={`${result.frictionRate.toFixed(3)} Pa/m`} />
-              <ResultRow label="Reynolds Number" value={`${Math.round(result.reynolds).toLocaleString()}`} />
-              <ResultRow label="Flow Regime" value={result.regime} />
+              {/* <ResultRow label="Reynolds Number" value={`${Math.round(result.reynolds).toLocaleString()}`} />
+              <ResultRow label="Flow Regime" value={result.regime} /> */}
               {result.warnings.length > 0 && (
                 <div style={resultSummaryStyle}>
                   {result.warnings.map((w, i) => (
@@ -2166,7 +2170,7 @@ function HvacPipePage() {
             </select>
           </div>
           <div style={inputGroupStyle}>
-            <label style={labelStyle}>Target ΔP</label>
+            <label style={labelStyle}>Target Dp</label>
             <input type="number" value={targetDp} onChange={(e) => setTargetDp(e.target.value)} style={inputStyle} />
             <span style={inputUnitStyle}>ft w.g./100ft</span>
           </div>
@@ -2189,8 +2193,8 @@ function HvacPipePage() {
                 <ResultRow label="Internal diameter" value={`${result.idMm.toFixed(0)} mm`} />
                 <ResultRow label="Velocity" value={`${result.velocity.toFixed(2)} m/s`} />
                 <ResultRow label="Pressure drop" value={`${result.pressureDrop.toFixed(2)} Pa/m`} />
-                <ResultRow label="Reynolds number" value={`${Math.round(result.reynolds).toLocaleString()}`} />
-                <ResultRow label="Flow regime" value={result.regime} />
+                {/* <ResultRow label="Reynolds number" value={`${Math.round(result.reynolds).toLocaleString()}`} />
+                <ResultRow label="Flow regime" value={result.regime} /> */}
                 {result.warnings.length > 0 && (
                   <div style={resultSummaryStyle}>
                     {result.warnings.map((w, idx) => (
@@ -3349,6 +3353,7 @@ function ExtStaticPressurePage() {
   const [ductFriction, setDuctFriction] = useState('');
   const [ductLength, setDuctLength] = useState('');
   const [equipmentLoss, setEquipmentLoss] = useState('');
+  const [fittingLoss, setFittingLoss] = useState('');
   const [result, setResult] = useState(null);
 
   const calcResult = useMemo(() => {
@@ -3361,12 +3366,14 @@ function ExtStaticPressurePage() {
       <div style={panelStyle}>
         <div style={panelHeaderStyle}><div style={panelAccentStyle} /><div style={panelTitleStyle}>External Static Pressure</div></div>
         <div style={panelBodyStyle}>
-          <div style={inputGroupStyle}><label style={labelStyle}>Duct Friction</label><input type="number" value={ductFriction} onChange={(e) => setDuctFriction(e.target.value)} style={inputStyle} placeholder="in w.g./100ft" /></div>
-          <div style={inputGroupStyle}><label style={labelStyle}>Duct Length (ft)</label><input type="number" value={ductLength} onChange={(e) => setDuctLength(e.target.value)} style={inputStyle} /></div>
+          <div style={inputGroupStyle}><label style={labelStyle}>Duct Friction</label><input type="number" value={ductFriction} onChange={(e) => setDuctFriction(e.target.value)} style={inputStyle} placeholder="Pa/m" /></div>
+          <div style={inputGroupStyle}><label style={labelStyle}>Duct Length</label><input type="number" value={ductLength} onChange={(e) => setDuctLength(e.target.value)} style={inputStyle} placeholder="m" /></div>
+          <div style={inputGroupStyle}><label style={labelStyle}>Fittings loss</label><input type="number" value={fittingLoss} onChange={(e) => setFittingLoss(e.target.value)} style={inputStyle} placeholder="Pa" /></div>
+          <div style={inputGroupStyle}><label style={labelStyle}>Equipment loss</label><input type="number" value={equipmentLoss} onChange={(e) => setEquipmentLoss(e.target.value)} style={inputStyle} placeholder="Pa" /></div>
           <button type="button" onClick={() => setResult({ ts: Date.now() })} style={buttonStyle}>Calculate</button>
         </div>
       </div>
-      {calcResult && <div style={panelStyle}><div style={resultRowStyle}><span>ESP</span><span style={resultValueStyle}>{calcResult.esp}"</span></div></div>}
+      {calcResult && <div style={panelStyle}><div style={resultRowStyle}><span>ESP</span><span style={resultValueStyle}>{calcResult.esp}Pa</span></div></div>}
     </div>
   );
 }
@@ -3726,7 +3733,8 @@ function HotWaterPage() {
   const [eff, setEff] = useState('85');
   const [storagePct, setStoragePct] = useState('10');
   const [result, setResult] = useState(null);
-
+  const [, setError] = useState("");
+  
   const calculate = () => {
     const lpd = parseFloat(buildingType);
     const occ = parseFloat(occupancy) || 1;
@@ -3737,7 +3745,7 @@ function HotWaterPage() {
     const sp = parseFloat(storagePct) / 100 || 0.1;
 
     if (th <= tc) {
-      alert('Hot temperature must be greater than cold temperature');
+      setError('Hot temperature must be greater than cold temperature');
       return;
     }
 
@@ -6491,12 +6499,13 @@ function KFactorPage() {
   const [kValue, setKValue] = useState('5.6');
   const [knownValue, setKnownValue] = useState('30');
   const [result, setResult] = useState(null);
-
+  const [, setError] = useState("");
+  
   const calculate = () => {
     const K = parseFloat(kValue) || 5.6;
     const known = parseFloat(knownValue) || 0;
     if (known <= 0) {
-      alert('Enter a positive value');
+      setError('Enter a positive value');
       return;
     }
 
@@ -7538,7 +7547,8 @@ function SprinklerDensityPage() {
             <label style={labelStyle}>Area per Sprinkler (ft²)</label>
             <input type="number" value={areaPerSprinkler} onChange={(e) => setAreaPerSprinkler(e.target.value)} style={inputStyle} />
           </div>
-          <button type="button" onClick={() => setResult({ ts: Date.now() })} style={calculateButtonStyle}>
+
+          <button type="button" onClick={() => setResult({ ts: Date.now() })} style={{ ...calculateButtonStyle, background: '#DC2626', marginTop: 16}}>
             Calculate
           </button>
         </div>
@@ -7803,13 +7813,6 @@ const cardStyle = {
   boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
 };
 
-const formGridStyle = {
-  display: 'grid',
-  gridTemplateColumns:
-    'repeat(auto-fit,minmax(220px,1fr))',
-  gap: 18,
-  marginTop: 20,
-};
 
 const labelStyle = {
   display: 'block',
@@ -7827,13 +7830,6 @@ const inputStyle = {
   outline: 'none',
 };
 
-const resultCardStyle = {
-  marginTop: 24,
-  padding: 20,
-  borderRadius: 14,
-  background: '#EFF6FF',
-  border: '1px solid #BFDBFE',
-};
 
 const resultValueStyle = {
   fontSize: '2rem',
@@ -7872,7 +7868,7 @@ const panelAccentStyle = {
 const panelTitleStyle = {
   fontWeight: 700,
   fontSize: '1rem',
-  color: '#111827',
+  color: '#0e0e0f',
 };
 
 const panelBodyStyle = {
@@ -7925,129 +7921,11 @@ const resultRowStyle = {
   color: '#111827',
 };
 
-const pageShellStyle = {
-  display: 'grid',
-  gridTemplateColumns: '280px 1fr',
-  gap: 20,
-  minHeight: '100vh',
-  background: '#F8FAFC',
-  padding: 24,
-  fontFamily: 'system-ui, sans-serif',
-};
-
-const sidebarStyle = {
-  background: '#FFFFFF',
-  borderRadius: 24,
-  padding: 20,
-  boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-  minHeight: 'calc(100vh - 48px)',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-};
-
-const sidebarHeaderStyle = {
-  fontSize: '1.1rem',
-  fontWeight: 700,
-  color: '#111827',
-};
-
-const sidebarSectionStyle = {
-  borderTop: '1px solid #E5E7EB',
-  paddingTop: 14,
-};
-
-const sidebarSectionHeaderStyle = {
-  width: '100%',
-  border: 'none',
-  background: 'transparent',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: 0,
-  color: '#111827',
-  fontWeight: 700,
-  cursor: 'pointer',
-  fontSize: '0.95rem',
-};
-
-const sidebarItemStyle = {
-  width: '100%',
-  border: 'none',
-  background: 'transparent',
-  padding: '10px 12px',
-  borderRadius: 12,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  cursor: 'pointer',
-  color: '#111827',
-  textAlign: 'left',
-};
-
-const sidebarDotStyle = {
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  background: '#CBD5E1',
-  flexShrink: 0,
-};
-
-const sidebarFooterStyle = {
-  marginTop: 'auto',
-  borderTop: '1px solid #E5E7EB',
-  paddingTop: 14,
-  display: 'grid',
-  gap: 10,
-};
-
-const footerItemStyle = {
-  width: '100%',
-  border: 'none',
-  background: '#F3F4F6',
-  borderRadius: 12,
-  padding: '10px 14px',
-  cursor: 'pointer',
-  color: '#111827',
-  textAlign: 'left',
-};
-
-const chevronStyle = {
-  fontSize: '0.85rem',
-  color: '#6B7280',
-};
-
-const mainContentStyle = {
-  display: 'grid',
-  gap: 20,
-};
-
-const badgeStyle = {
-  borderRadius: 9999,
-  padding: '10px 18px',
-  fontWeight: 700,
-  fontSize: '0.9rem',
-  alignSelf: 'start',
-};
-
-const pageDescriptionCardStyle = {
-  background: '#FFFFFF',
-  borderRadius: 24,
-  padding: 24,
-  boxShadow: '0 1px 4px rgba(15,23,42,0.08)',
-};
 
 const chipRowStyle = {
   display: 'flex',
   flexWrap: 'wrap',
   gap: 8,
-};
-
-const placeholderCardStyle = {
-  background: '#F8FAFC',
-  borderRadius: 16,
-  padding: 18,
-  color: '#334155',
 };
 
 const chipStyle = {

@@ -1,5 +1,5 @@
 //src/pages/staff/Staff.jsx
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { db, auth } from "../../firebase/firebase";
@@ -10,7 +10,6 @@ import autoTable from "jspdf-autotable";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { deleteStaff } from "../../firebase/staffService";
 import {
-  deleteDoc,
   updateDoc,
   setDoc,
   addDoc,
@@ -26,6 +25,14 @@ import UploadPage from "../leads/LeadsFileUpload";
 function StaffManager({ staffList, setStaffList, companyId }) {
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [editingNames, setEditingNames] = useState({});
+  const [approvingUsers, setApprovingUsers] = useState({});
+  const { userData } = useAuth();
+  const [, setError] = useState("");
+ 
+  const canApprove =
+    userData?.role === "company_admin" &&
+    userData?.approved === true;
+
   const togglePermission = async (page) => {
 
     if (!selectedStaff) return;
@@ -76,7 +83,7 @@ function StaffManager({ staffList, setStaffList, companyId }) {
 
     } catch (err) {
       console.error(err);
-      alert("Failed to update permissions");
+      setError("Failed to update permissions");
     }
   };
 
@@ -87,10 +94,10 @@ function StaffManager({ staffList, setStaffList, companyId }) {
     try {
       await deleteStaff(companyId, staffId);
       setStaffList(prev => prev.filter(s => s.id !== staffId));
-      alert("Staff deleted successfully!");
+      setError("Staff deleted successfully!");
     } catch (err) {
       console.error("Error deleting staff:", err);
-      alert("Failed to delete staff. Try again.");
+      setError("Failed to delete staff. Try again.");
     }
   };
 
@@ -155,11 +162,79 @@ function StaffManager({ staffList, setStaffList, companyId }) {
         )
       );
 
-      alert("Name updated successfully");
+      setError("Name updated successfully");
 
     } catch (err) {
       console.error("Name update error:", err);
-      alert("Failed to update name");
+      setError("Failed to update name");
+    }
+  };
+
+  const approveUser = async (staff) => {
+    try {
+      if (!canApprove) {
+        setError("You are not authorized to approve users.");
+        return;
+      }
+      // Prevent duplicate clicks
+      if (approvingUsers[staff.id]) return;
+
+      setApprovingUsers(prev => ({
+        ...prev,
+        [staff.id]: true,
+      }));
+
+      await updateDoc(
+        doc(
+          db,
+          "companies",
+          companyId,
+          "users",
+          staff.id
+        ),
+        {
+          approved: true,
+          accessEnabled: true,
+          approvedAt: serverTimestamp(),
+          approvedBy: auth.currentUser.uid,
+        }
+      );
+
+      await updateDoc(
+        doc(
+          db,
+          "users",
+          staff.id
+        ),
+        {
+          approved: true,
+          accessEnabled: true,
+          approvedAt: serverTimestamp(),
+          approvedBy: auth.currentUser.uid,
+        }
+      );
+
+      setStaffList(prev =>
+        prev.map(s =>
+          s.id === staff.id
+            ? {
+              ...s,
+              approved: true
+            }
+            : s
+        )
+      );
+
+      setError("User approved");
+
+    } catch (err) {
+      console.error(err);
+      setError("Approval failed");
+    } finally {
+      setApprovingUsers(prev => ({
+        ...prev,
+        [staff.id]: false,
+      }));
     }
   };
 
@@ -173,6 +248,7 @@ function StaffManager({ staffList, setStaffList, companyId }) {
             <th>Last Name</th>
             <th>Role</th>
             <th>Status</th>
+            <th>Approval</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -237,6 +313,38 @@ function StaffManager({ staffList, setStaffList, companyId }) {
                   <label style={{ marginLeft: 8 }}>
                     {staff.active !== false ? "Active" : "Inactive"}
                   </label>
+                </div>
+              </td>
+              <td>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  {staff.approved ? (
+                    <span className="text-success">
+                      Approved
+                    </span>
+                  ) : (
+                    <span className="text-danger">
+                      Pending
+                    </span>
+                  )}
+
+                  {canApprove && !staff.approved && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={approvingUsers[staff.id]}
+                      onClick={() => approveUser(staff)}
+                    >
+                      {approvingUsers[staff.id]
+                        ? "Approving..."
+                        : "Approve"}
+                    </Button>
+                  )}
                 </div>
               </td>
               <td style={{ display: "flex", gap: 8 }}>
@@ -317,33 +425,35 @@ function StaffManager({ staffList, setStaffList, companyId }) {
               }}
             >
 
-              {ALL_PAGES.map(page => {
+              {ALL_PAGES
+                .filter(page => page !== "nimbusx")
+                .map(page => {
 
-                const checked =
-                  selectedStaff.customPermissions?.[page] ??
-                  ROLE_ACCESS[selectedStaff.role]?.includes(page);
+                  const checked =
+                    selectedStaff.customPermissions?.[page] ??
+                    ROLE_ACCESS[selectedStaff.role]?.includes(page);
 
-                return (
-                  <label
-                    key={page}
-                    style={{
-                      border: "1px solid #ddd",
-                      padding: 10,
-                      borderRadius: 8,
-                      background: "#fff"
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => togglePermission(page)}
-                      style={{ marginRight: 8 }}
-                    />
+                  return (
+                    <label
+                      key={page}
+                      style={{
+                        border: "1px solid #ddd",
+                        padding: 10,
+                        borderRadius: 8,
+                        background: "#fff"
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePermission(page)}
+                        style={{ marginRight: 8 }}
+                      />
 
-                    {page}
-                  </label>
-                );
-              })}
+                      {page}
+                    </label>
+                  );
+                })}
             </div>
           </div>
         )}
@@ -360,7 +470,8 @@ export default function Staff() {
   const [activeView, setActiveView] = useState("attendance");
   const [loading, setLoading] = useState(true);
   const [monthlyFee, setMonthlyFee] = useState(26050);
-
+  const [, setError] = useState("");
+  
   // "attendance" | "subscription"
   const [companyName, setCompanyName] = useState("");
   const [logoFile, setLogoFile] = useState([]);
@@ -384,14 +495,14 @@ export default function Staff() {
 
   const handleLogoUpload = async () => {
     if (!logoFile.length) {
-      alert("Please upload a logo first");
+      setError("Please upload a logo first");
       return;
     }
 
     const logo = logoFile[0];
 
     if (!logo?.fileId) {
-      alert("Invalid file. Please upload again.");
+      setError("Invalid file. Please upload again.");
       return;
     }
 
@@ -407,11 +518,11 @@ export default function Staff() {
         },
         { merge: true }
       );
-      
-      alert("Logo saved successfully!");
+
+      setError("Logo saved successfully!");
     } catch (err) {
       console.error("Logo save error:", err);
-      alert("Failed to save logo");
+      setError("Failed to save logo");
     }
   };
 
@@ -422,7 +533,7 @@ export default function Staff() {
 
   const payWithPaystack = (config, onSuccess) => {
     if (!window.PaystackPop) {
-      alert("Paystack not loaded");
+      setError("Paystack not loaded");
       return;
     }
 
@@ -497,7 +608,7 @@ export default function Staff() {
   useEffect(() => {
     if (!companyId) return;
 
-    const days = new Date(year, now.getMonth() + 1, 0).getDate();
+    const days = new Date(year, Number(month), 0).getDate();
     setDaysInMonth(days);
 
     const monthId = `${year}-${month}`;
@@ -526,8 +637,6 @@ export default function Staff() {
     if (staffList.length) loadAttendance();
   }, [companyId, staffList, year, month]);
 
-  const numberOfUsers = staffList.filter(s => s.active !== false).length;
-  const totalDue = monthlyFee * numberOfUsers;
 
 
 
@@ -582,7 +691,7 @@ export default function Staff() {
         ]);
 
         await Promise.all(batchUpdates);
-        alert("Subscription payment successful!");
+        setError("Subscription payment successful!");
       }
     );
   };
@@ -701,14 +810,16 @@ export default function Staff() {
     );
   }
 
+  
   // 🔥 BILLING CALCULATIONS
   const today = new Date();
   const totalDaysInMonth = new Date(year, today.getMonth() + 1, 0).getDate();
-  const currentDay = today.getDate();
 
   // Filter ONLY active employees
   const activeStaff = staffList.filter(
-    (s) => s.employmentStatus !== "resigned"
+    (s) =>
+      s.employmentStatus !== "resigned" &&
+      s.approved === true
   );
 
   // Split by billing status
@@ -799,8 +910,7 @@ export default function Staff() {
         <>
           {/* 🔴 Attendance Notice */}
           <p style={{ color: "red", fontWeight: "bold" }}>
-            Attendance is marked automatically when you have both a login and logout
-            for that day. Please ensure you logout at the end of each working day.
+            Attendance is marked automatically by the system. Ensure you login on working days to maintain a good record.
           </p>
 
           <Button className="mb-3" onClick={exportToPDF}>
@@ -889,7 +999,11 @@ export default function Staff() {
             }}
           >
             <h3 style={{ marginBottom: 20 }}>Current Plan Overview</h3>
-
+            <p>
+              <span style={{ color: "red", fontWeight: "bold" }}>
+                Transaction charges may be added to payment sum.
+              </span>
+            </p>
             <p><strong>Plan:</strong> Per User Monthly</p>
             <p><strong>Price:</strong> ₦{monthlyFee.toLocaleString()} / user</p>
             <p>

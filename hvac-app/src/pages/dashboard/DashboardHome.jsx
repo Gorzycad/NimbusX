@@ -9,7 +9,7 @@ import ProjectChat from "../chat/ProjectChat";
 import TutorialsGrid from "../chat/TutorialVideos";
 
 export default function DashboardHome() {
-  const { user, userData, displayName, companyId, role } = useAuth();
+  const { user, userData, companyId, role } = useAuth();
 
   const [activePanel, setActivePanel] = useState("notifications");
 

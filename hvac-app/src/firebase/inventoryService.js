@@ -1,7 +1,6 @@
 // src/firebase/inventoryService.js
 import {
   collection,
-  addDoc,
   updateDoc,
   deleteDoc,
   getDocs,
@@ -111,9 +110,11 @@ export const deleteInventoryRow = async (companyId, tab, id) => {
   await deleteDoc(ref);
 };
 
-export default {
+const inventoryService = {
   saveInventoryTable,
   getInventoryTable,
   updateInventoryRow,
   deleteInventoryRow,
 };
+
+export default inventoryService;

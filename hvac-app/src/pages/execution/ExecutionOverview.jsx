@@ -42,13 +42,14 @@ function calculateProgress(startDate, finishDate) {
 /* ---------------- COMPONENT ---------------- */
 
 export default function ExecutionPage() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [executions, setExecutions] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
-
+  const [, setError] = useState("");
+  
   const [formData, setFormData] = useState({
     projectName: "",
     staffAssigned: [],
@@ -144,7 +145,7 @@ export default function ExecutionPage() {
 
   const handleSave = async () => {
     if (!formData.projectName) {
-      alert("Select project");
+      setError("Select project");
       return;
     }
 

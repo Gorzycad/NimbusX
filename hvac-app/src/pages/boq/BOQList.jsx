@@ -5,24 +5,12 @@ import { getLeads } from "../../firebase/leadsService";
 import { addBoq, updateBoq, deleteBoq, getBoqs } from "../../firebase/boqService";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
-import { collection, getDocs, where, query } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { notifyAssignedStaff } from "../leads/LeadsListHelper";
-
-/* role -> key */
-function roleNameToKeyLocal(friendlyName) {
-  return friendlyName.toUpperCase().replace(/\s+/g, "_");
-}
-
-/* fetch users by roles */
-async function getUsersByRoles(selectedRoles = [], companyId = null) {
-  if (!selectedRoles?.length) return [];
-  const roleKeys = selectedRoles.map(roleNameToKeyLocal);
-  const usersRef = collection(db, "companies", companyId, "users");
-  const q = query(usersRef, where("role", "in", roleKeys));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-}
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 function groupProductsByDiscipline(products = []) {
   const groups = {
@@ -75,7 +63,7 @@ function createDefaultBoqData(products = []) {
 
 
 export default function BoqPage() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [boqRows, setBoqRows] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -83,6 +71,7 @@ export default function BoqPage() {
   const [openSection, setOpenSection] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [products, setProducts] = useState([]);
+  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     title: "",
     projectName: "",
@@ -91,6 +80,8 @@ export default function BoqPage() {
     electrical: [],
     plumbing: [],
   });
+
+
   /* ---------------- LOAD PROJECTS ---------------- */
   useEffect(() => {
     if (!companyId) return;
@@ -111,7 +102,17 @@ export default function BoqPage() {
 
     const loadProducts = async () => {
       const snap = await getDocs(collection(db, "products"));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      //const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const data = snap.docs
+        .map(d => ({
+          id: d.id,
+          ...d.data(),
+        }))
+        .sort(
+          (a, b) =>
+            Number(a.serialNo || 999999) -
+            Number(b.serialNo || 999999)
+        );
       setProducts(data);
     };
 
@@ -224,8 +225,8 @@ export default function BoqPage() {
 
   /* ---------------- SAVE BOQ ---------------- */
   async function handleSave() {
-    if (!formData.title.trim()) return alert("Title is required");
-    if (!formData.projectName) return alert("Select project");
+    if (!formData.title.trim()) return setError("Title is required");
+    if (!formData.projectName) return setError("Select project");
 
     const payload = {
       title: formData.title,
@@ -281,6 +282,164 @@ export default function BoqPage() {
     );
     setOpenSection("mechanical");
   }
+
+  /* ---------------- EXPORT PDF ---------------- */
+  const exportToPDF = () => {
+    if (!formData.projectName) return setError("Select project");
+    
+    const docPdf = new jsPDF("landscape");
+
+    docPdf.setFontSize(14);
+
+    docPdf.text(
+      `BOQ Report - ${formData.projectName || "All Projects"}`,
+      14,
+      12
+    );
+
+    const sections = [
+      {
+        title: "Mechanical",
+        rows: formData.mechanical || [],
+      },
+      {
+        title: "Electrical",
+        rows: formData.electrical || [],
+      },
+      {
+        title: "Plumbing",
+        rows: formData.plumbing || [],
+      },
+    ];
+
+    let currentY = 20;
+
+    sections.forEach((section) => {
+      if (!section.rows.length) return;
+
+      docPdf.setFontSize(12);
+      docPdf.text(section.title, 14, currentY);
+
+      const body = section.rows.map((row, index) => [
+        index + 1,
+        row.item || "",
+        row.qty || 0,
+        row.unit || "",
+        Number(row.rate || 0).toLocaleString(),
+        (
+          Number(row.qty || 0) *
+          Number(row.rate || 0)
+        ).toLocaleString(),
+      ]);
+
+      autoTable(docPdf, {
+        startY: currentY + 4,
+
+        head: [[
+          "#",
+          "Item",
+          "Qty",
+          "Unit",
+          "Rate",
+          "Total",
+        ]],
+
+        body,
+
+        theme: "grid",
+
+        styles: {
+          fontSize: 8,
+          cellPadding: 2,
+        },
+
+        headStyles: {
+          fillColor: [240, 240, 240],
+          textColor: 0,
+        },
+      });
+
+      currentY =
+        docPdf.lastAutoTable.finalY + 12;
+    });
+
+    docPdf.setFontSize(12);
+
+    docPdf.text(
+      `Grand Total: ${sectionTotals.grand.toLocaleString()}`,
+      14,
+      currentY + 5
+    );
+
+    docPdf.save(
+      `${formData.projectName || "BOQ"}_BOQ.pdf`
+    );
+  };
+
+  const exportToExcel = () => {
+    if (!formData.projectName) return setError("Select project");
+
+    const rows = [];
+
+    const sections = [
+      {
+        title: "Mechanical",
+        data: formData.mechanical,
+      },
+      {
+        title: "Electrical",
+        data: formData.electrical,
+      },
+      {
+        title: "Plumbing",
+        data: formData.plumbing,
+      },
+    ];
+
+    sections.forEach(section => {
+      rows.push({
+        Section: section.title,
+        Item: "",
+        Qty: "",
+        Unit: "",
+        Rate: "",
+        Total: "",
+      });
+
+      section.data.forEach(row => {
+        rows.push({
+          Section: "",
+          Item: row.item,
+          Qty: row.qty,
+          Unit: row.unit,
+          Rate: row.rate,
+          Total: Number(row.qty) * Number(row.rate),
+        });
+      });
+
+      rows.push({});
+    });
+
+    rows.push({
+      Item: "Grand Total",
+      Total: sectionTotals.grand,
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      "BOQ"
+    );
+
+    XLSX.writeFile(
+      workbook,
+      `${formData.projectName || "BOQ"}_BOQ.xlsx`
+    );
+  };
 
   /* ---------------- EDIT BOQ ---------------- */
   function handleEdit(item) {
@@ -496,9 +655,29 @@ export default function BoqPage() {
           {renderSectionEditor("electrical")}
           {renderSectionEditor("plumbing")}
 
+          {/* Error Message */}
+          {error && (
+            <div className="alert alert-danger">
+              {error}
+            </div>
+          )}
+
           {/* save / cancel */}
           <div className="mt-4 d-flex gap-3">
-            <button className="btn btn-primary" onClick={handleSave}>
+            <button
+              className="btn btn-success"
+              onClick={exportToExcel}
+            >
+              Export Excel
+            </button>
+            <button
+              className="btn btn-outline-danger"
+              onClick={exportToPDF}
+            >
+              Export PDF
+            </button>
+            <button className="btn btn-primary"
+              onClick={handleSave}>
               {editingId ? "Update BOQ" : "Save BOQ"}
             </button>
             {editingId && (

@@ -7,10 +7,6 @@ import {
 import { useAuth } from "../../contexts/AuthContext";
 import { getLeads } from "../../firebase/leadsService";
 
-const createRows = (count, fields) =>
-  Array.from({ length: count }, () =>
-    fields.reduce((acc, f) => ({ ...acc, [f]: "" }), {})
-  );
 
 export default function InventoryPage() {
   const { companyId } = useAuth();
@@ -18,7 +14,8 @@ export default function InventoryPage() {
   /* -----------------------------
      STATE
   ----------------------------- */
-  const emptyInventoryRow = {
+  const emptyInventoryRow = useMemo(
+  () => ({
     productId: "",
     product: "",
     unit: "",
@@ -28,7 +25,9 @@ export default function InventoryPage() {
     reorder: "",
     orderTime: "",
     eta: "",
-  };
+  }),
+  []
+);
 
   const [inventoryRows, setInventoryRows] = useState([emptyInventoryRow]);
 
@@ -72,30 +71,7 @@ export default function InventoryPage() {
   const vendorKey = `vendors_${activeInventoryTab}`;
   const orderKey = `orders_${activeInventoryTab}`;
 
-  // useEffect(() => {
-  //   if (!companyId) return;
 
-
-  //   const loadData = async () => {
-  //     try {
-  //       const inv = await getInventoryTable(companyId, inventoryKey);
-  //       const vendors = await getInventoryTable(companyId, vendorKey);
-  //       const orders = await getInventoryTable(companyId, orderKey);
-
-  //       if (inv.length) setInventoryRows(inv);
-  //       if (vendors.length) setVendorRows(vendors);
-  //       if (orders.length) setOrderRows(orders);
-
-  //     } catch (err) {
-  //       console.error("Load Failed:", err);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-
-  //   setLoading(true);
-  //   loadData();
-  // }, [companyId, activeInventoryTab]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -115,7 +91,15 @@ export default function InventoryPage() {
     };
 
     loadData();
-  }, [companyId, activeInventoryTab]);
+  }, [companyId, activeInventoryTab, inventoryKey,
+    vendorKey,
+    orderKey,
+    emptyInventoryRow,
+  ]);
+
+  const orderTimes = inventoryRows
+    .map(r => r.orderTime)
+    .join(",");
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -144,42 +128,8 @@ export default function InventoryPage() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [inventoryRows.map(r => r.orderTime).join(",")]);
+  }, [orderTimes]);
 
-  // useEffect(() => {
-  //   setInventoryRows([emptyInventoryRow]);
-  //   setVendorRows([]);
-  //   setOrderRows([]);
-  //   setLoading(true);
-  // }, [activeInventoryTab]);
-
-  // useEffect(() => {
-  //   setInventoryRows(prev => {
-  //     let changed = false;
-
-  //     const updated = prev.map(row => {
-  //       if (!row.orderTime) return row;
-
-  //       const days = Number(row.orderTime);
-  //       if (isNaN(days)) return row;
-
-  //       const today = new Date();
-  //       const etaDate = new Date(today);
-  //       etaDate.setDate(today.getDate() + days);
-
-  //       const newEta = etaDate.toISOString().split("T")[0];
-
-  //       if (row.eta !== newEta) {
-  //         changed = true;
-  //         return { ...row, eta: newEta };
-  //       }
-
-  //       return row;
-  //     });
-
-  //     return changed ? updated : prev; // ✅ prevents infinite loop
-  //   });
-  // }, [inventoryRows]);
 
 
   /* -----------------------------
@@ -208,21 +158,7 @@ export default function InventoryPage() {
   /* -----------------------------
      SYNC VENDOR → INVENTORY
   ----------------------------- */
-  // useEffect(() => {
-  //   const updated = inventoryRows.map(inv => {
-  //     const existing = vendorRows.find(v => v.productId === inv.productId);
 
-  //     return {
-  //       productId: inv.productId,
-  //       product: inv.product,
-  //       unit: inv.unit,
-  //       contactName: existing?.contactName || "",
-  //       contactPhone: existing?.contactPhone || "",
-  //     };
-  //   });
-
-  //   setVendorRows(updated);
-  // }, [inventoryRows]);
   useEffect(() => {
     if (!inventoryRows.length) return;
 
@@ -266,31 +202,7 @@ export default function InventoryPage() {
       });
     });
   }, [inventoryRows, vendorRows, activeInventoryTab]);
-  // useEffect(() => {
-  //   setOrderRows(prev => {
-  //     return inventoryRows.map(inv => {
-  //       const existing = prev.find(o => o.productId === inv.productId);
-  //       const vendor = vendorRows.find(v => v.productId === inv.productId);
 
-  //       const quantity = existing?.quantity || "";
-  //       const price = existing?.price || inv.price || "";
-
-  //       return {
-  //         productId: inv.productId,
-  //         product: inv.product,
-  //         unit: inv.unit,
-  //         quantity,
-  //         price, // ✅ NEW editable
-  //         totalCost:
-  //           quantity && price
-  //             ? (Number(quantity) * Number(price)).toFixed(2)
-  //             : "",
-  //         contactName: vendor?.contactName || "",
-  //         contactPhone: vendor?.contactPhone || "",
-  //       };
-  //     });
-  //   });
-  // }, [inventoryRows, vendorRows]);
 
   /* -----------------------------
      HELPERS
@@ -720,38 +632,7 @@ export default function InventoryPage() {
                   </tr>
                 ))}
               </tbody>
-              {/* <tbody>
-                {inventoryRows.map((row, i) => (
-                  <tr key={i}>
-                    {Object.keys(row).map((field, idx) => (
-                      <td key={idx}>
-                        <input
-                          className="form-control form-control-sm"
-                          value={row[field]}
-                          disabled={field === "total"}
-                          onChange={e =>
-                            handleChange(
-                              inventoryRows,
-                              setInventoryRows,
-                              i,
-                              field,
-                              e.target.value
-                            )
-                          }
-                        />
-                      </td>
-                    ))}
-                    <td>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => removeInventoryRow(i)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody> */}
+
             </table>
           </div>
 
@@ -910,32 +791,7 @@ export default function InventoryPage() {
                   );
                 })}
               </tbody>
-              {/* <tbody>
-                {orderRows.map((row, i) => (
-                  <tr key={i}>
-                    {Object.keys(row).map((field, idx) => (
-                      <td key={idx}>
-                        <input
-                          className="form-control form-control-sm"
-                          value={row[field]}
-                          disabled={
-                            ["productId", "product", "unit", "totalCost"].includes(field)
-                          }
-                          onChange={e =>
-                            handleChange(
-                              orderRows,
-                              setOrderRows,
-                              i,
-                              field,
-                              e.target.value
-                            )
-                          }
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody> */}
+
             </table>
           </div>
 

@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { useAuth } from "../../contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+
 
 const TYPE_LABELS = {
   JOBS_ASSIGNED: "Jobs Assigned",
@@ -21,7 +21,6 @@ const TYPE_LABELS = {
 
 function Notifications() {
   const { user, companyId } = useAuth();
-  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(() => {
     const saved = localStorage.getItem("notifDropdownOpen");

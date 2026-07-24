@@ -24,14 +24,29 @@ export default function uploadRoute(CONFIG) {
     filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
   });
 
-  const upload = multer({ storage });
+  const upload = multer({
 
-  router.post("/", upload.single("file"), async (req, res) => {
+    storage,
+
+    limits: {
+      fileSize: 100 * 1024 * 1024,
+      files: 20
+    }
+
+  });
+
+  router.post("/", upload.array("files", 20), async (req, res) => {
     try {
       const { uid } = req.body;
 
       if (!uid) {
         return res.status(400).json({ error: "Missing user id" });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          error: "No files uploaded",
+        });
       }
 
       console.log("UID RECEIVED:", req.body.uid);
@@ -64,49 +79,69 @@ export default function uploadRoute(CONFIG) {
 
       const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-      const response = await drive.files.create({
-        requestBody: {
-          name: req.file.originalname,
-        },
-        media: {
-          mimeType: req.file.mimetype,
-          body: fs.createReadStream(req.file.path),
-        },
-      });
+      const uploadedFiles = [];
 
-      // ✅ THIS WAS MISSING
-      const fileId = response.data.id;
+      for (const file of req.files) {
+        try {
+          const response = await drive.files.create({
+            requestBody: {
+              name: file.originalname,
+              mimeType: file.mimetype
+            },
+            media: {
+              mimeType: file.mimetype,
+              body: fs.createReadStream(file.path),
+            },
+          });
 
-      await drive.permissions.create({
-        fileId: fileId,
-        requestBody: {
-          role: "reader",
-          type: "anyone",
-        },
-      });
+          const fileId = response.data.id;
 
-      fs.unlinkSync(req.file.path);
+          await drive.permissions.create({
+            fileId,
+            requestBody: {
+              role: "reader",
+              type: "anyone",
+            },
+          });
+
+          uploadedFiles.push({
+            fileId,
+            name: file.originalname,
+            downloadLink: `https://drive.google.com/uc?id=${fileId}&export=download`,
+          });
+          console.log(
+            `Uploaded ${file.originalname} (${fileId})`
+          );
+        } finally {
+
+          // Delete temporary uploaded file
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+
+        }
+      }
 
       return res.json({
-        fileId: response.data.id,
-        fileName: response.data.name,
+        success: true,
+        files: uploadedFiles,
       });
 
-    } 
+    }
     //catch (err) {
     //   console.error("UPLOAD ERROR:", err.message);
     //   return res.status(500).json({ error: err.message });
     // }
     catch (err) {
-    console.error("UPLOAD ROUTE ERROR:");
-    console.error(err);
-    console.error(err.response?.data);
+      console.error("UPLOAD ROUTE ERROR:");
+      console.error(err);
+      console.error(err.response?.data);
 
-    res.status(500).json({
-      error: err.message,
-      details: err.response?.data || null,
-    });
-  }
+      res.status(500).json({
+        error: err.message,
+        details: err.response?.data || null,
+      });
+    }
   });
 
   return router;

@@ -216,7 +216,7 @@ export const calcDuctSizer = ({
   targetFriction = '', // in w.g./100ft or Pa/m
   ductShape = 'round', // 'round' or 'rect'
   aspectRatio = 2.0, // Width:Height for rectangular (ignored if round)
-  isIP = false,
+  isIP = true,
 }) => {
   const Q = isIP ? parseFloat(airflow) * 4.71947e-4 : parseFloat(airflow) * 1e-3; // m³/s
   const frRaw = parseFloat(targetFriction);
@@ -263,9 +263,9 @@ export const calcDuctSizer = ({
       size: isIP ? `${(stdMmVal / 25.4).toFixed(0)}"` : `${stdMmVal}mm`,
       velocity: isIP ? vFpm : v,
       frictionRate: isIP ? dPM / 8.16828 : dPM,
-      reynolds: Re,
+      //reynolds: Re,
       frictionFactor: f,
-      regime: Re < 2300 ? 'Laminar' : Re < 4000 ? 'Transitional' : 'Turbulent',
+      //regime: Re < 2300 ? 'Laminar' : Re < 4000 ? 'Transitional' : 'Turbulent',
       warnings,
     };
   } else {
@@ -298,9 +298,9 @@ export const calcDuctSizer = ({
       deqSize: isIP ? `${(DeqStd / 0.0254).toFixed(1)}"` : `${(DeqStd * 1000).toFixed(0)}mm`,
       velocity: isIP ? vFpm : v,
       frictionRate: isIP ? dPM / 8.16828 : dPM,
-      reynolds: Re,
+      //reynolds: Re,
       frictionFactor: f,
-      regime: Re < 2300 ? 'Laminar' : Re < 4000 ? 'Transitional' : 'Turbulent',
+      //regime: Re < 2300 ? 'Laminar' : Re < 4000 ? 'Transitional' : 'Turbulent',
       warnings,
     };
   }
@@ -480,37 +480,50 @@ export const calcHvacPipeSize = ({
  * Calculates required ESP for HVAC systems
  */
 export const calcExtStaticPressure = ({
-  ductFriction = '', // in w.g./100ft
-  ductLength = '', // ft
-  equipmentLoss = '', // in w.g. (filters, coils, dampers)
-  fittingLoss = 0, // in w.g.
-  safetyFactor = 10, // %
-  isIP = false,
+  ductFriction = '',     // Pa/m
+  ductLength = '',       // m
+  equipmentLoss = '',    // Pa
+  fittingLoss = '',       // Pa
+  safetyFactor = 10,     // %
 }) => {
-  const frRaw = parseFloat(ductFriction) || 0;
-  const lenRaw = parseFloat(ductLength) || 0;
-  const eqRaw = parseFloat(equipmentLoss) || 0;
-  const fitRaw = parseFloat(fittingLoss) || 0;
+  const fr = parseFloat(ductFriction) || 0;
+  const len = parseFloat(ductLength) || 0;
+  const eq = parseFloat(equipmentLoss) || 0;
+  const fit = parseFloat(fittingLoss) || 0;
 
-  if (isNaN(frRaw) || isNaN(lenRaw)) return null;
+  if (isNaN(fr) || isNaN(len)) return null;
 
-  const fractionLength = lenRaw / 100;
-  const ductLoss = frRaw * fractionLength;
-  const totalFriction = ductLoss + fitRaw;
-  const subtotal = totalFriction + eqRaw;
+  // Pressure loss in straight duct
+  const ductLoss = fr * len;
+
+  // Total duct resistance
+  const totalFriction = ductLoss + fit;
+
+  // Total static pressure before safety factor
+  const subtotal = totalFriction + eq;
+
+  // Design ESP
   const esp = subtotal * (1 + safetyFactor / 100);
 
   const warnings = [];
-  if (esp > 3) warnings.push(`High ESP: ${esp.toFixed(2)}" - May require larger fan or more stages`);
-  if (esp < 0.1) warnings.push(`Low ESP: ${esp.toFixed(2)}" - Verify measurement accuracy`);
+
+  if (esp > 1000)
+    warnings.push(
+      `High ESP: ${esp.toFixed(0)} Pa - Check duct sizing or fan selection`
+    );
+
+  if (esp < 50)
+    warnings.push(
+      `Low ESP: ${esp.toFixed(0)} Pa - Verify input values`
+    );
 
   return {
-    ductLoss: ductLoss.toFixed(3),
-    equipmentLoss: eqRaw.toFixed(3),
-    fittingLoss: fitRaw.toFixed(3),
-    totalFriction: totalFriction.toFixed(3),
-    subtotal: subtotal.toFixed(3),
-    esp: esp.toFixed(3),
+    ductLoss: ductLoss.toFixed(1),
+    equipmentLoss: eq.toFixed(1),
+    fittingLoss: fit.toFixed(1),
+    totalFriction: totalFriction.toFixed(1),
+    subtotal: subtotal.toFixed(1),
+    esp: esp.toFixed(1),
     warnings,
   };
 };
@@ -716,7 +729,7 @@ export const calcFixtureUnit = ({
 }) => {
   try {
     const resFix = JSON.parse(residentialFixtures);
-    const comFix = JSON.parse(commercialFixtures);
+    //const comFix = JSON.parse(commercialFixtures);
 
     const fixtureUnits = {
       toilet: 3,
@@ -768,7 +781,7 @@ export const calcBoosterPump = ({
   isIP = false,
 }) => {
   const gpm = parseFloat(designFlow) || 0;
-  const minP = parseFloat(minPressure) || 20;
+  //const minP = parseFloat(minPressure) || 20;
   const maxP = parseFloat(maxPressure) || 80;
   const statHead = parseFloat(staticHead) || 0;
   const pLoss = parseFloat(pipeLoss) || 0;
@@ -819,7 +832,7 @@ export const calcPressureAtFixture = ({
   // Simplified friction loss using Hazen-Williams
   const c = 150; // Friction coefficient
   const d = pipeSizeIn / 12; // Convert to ft
-  const v = gpm / (0.785 * d * d);
+  //const v = gpm / (0.785 * d * d);
   const frictionLoss = (10.67 * Math.pow(gpm, 1.852) * len) / (Math.pow(c, 1.852) * Math.pow(d, 4.8704));
 
   const staticPressure = (lift / 2.31);
@@ -860,7 +873,7 @@ export const calcPipeDesignCheck = ({
   // Friction loss per 100 ft
   const fl100 = (10.67 * Math.pow(gpm, 1.852)) / (Math.pow(c, 1.852) * Math.pow(d, 4.8704));
 
-  const warnings = [];
+  //const warnings = [];
   const issues = [];
 
   if (velFps < 2) {
@@ -940,14 +953,14 @@ export const calcSewagePump = ({
   const gpd = parseFloat(dailyFlow) || 0;
   const peakFac = parseFloat(peakFactor) || 3;
   const stnCap = parseFloat(stationCapacity) || 1000;
-  const cycles = parseFloat(pumpCycles) || 4;
+  //const cycles = parseFloat(pumpCycles) || 4;
   const lift = parseFloat(liftHeight) || 20;
 
   if (isNaN(gpd)) return null;
 
   const peakGPM = (gpd * peakFac) / (24 * 60);
   const pumpGPM = (gpd / 24 / 60) * peakFac;
-  const runtimeHours = (gpd / 24) / (pumpGPM * 60);
+  //const runtimeHours = (gpd / 24) / (pumpGPM * 60);
 
   // Pump head calculation (simplified)
   const pumpHeadFt = lift + 15; // lift + friction/pressure allowance
@@ -1562,7 +1575,7 @@ export const calcEarthingResistance = ({
   const diam = isIP ? parseFloat(rodDiameter) * 25.4 : parseFloat(rodDiameter);
   const rho = parseFloat(soilResistivity) || 100;
   const numRods = parseFloat(rodCount) || 1;
-  const spacing = isIP ? parseFloat(rodSpacing) * 0.3048 : parseFloat(rodSpacing);
+  //const spacing = isIP ? parseFloat(rodSpacing) * 0.3048 : parseFloat(rodSpacing);
 
   if (isNaN(len) || isNaN(diam)) return null;
 

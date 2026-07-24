@@ -1,5 +1,5 @@
 // src/pages/leads/LeadsList.jsx
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   addLead,
   updateLead,
@@ -13,20 +13,16 @@ import StaffSelector from "../../components/layout/StaffSelector";
 import { useAuth } from "../../contexts/AuthContext";
 import UploadPage from "./LeadsFileUpload";
 import { db } from "../../firebase/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-
-function cleanData(data) {
-  return Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
-}
+import { collection, getDocs } from "firebase/firestore";
 
 export default function LeadsList() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [leads, setLeads] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [, setError] = useState("");
+
   /* ---------------- LOAD STAFF ---------------- */
   useEffect(() => {
     if (!companyId) return;
@@ -106,7 +102,7 @@ export default function LeadsList() {
   const handleSave = async () => {
     try {
       if (!formData.projectName.trim()) {
-        alert("Project Name is required.");
+        setError("Project Name is required.");
         return;
       }
 
@@ -122,7 +118,7 @@ export default function LeadsList() {
       });
 
       if (projectExists) {
-        alert("Project name already exists");
+        setError("Project name already exists");
         return;
       }
 
@@ -151,7 +147,7 @@ export default function LeadsList() {
       } else {
         // Add new lead and get the docRef
         if (!companyId) {
-          alert("Company ID not loaded yet");
+          setError("Company ID not loaded yet");
           return;
         }
         console.log(
@@ -208,7 +204,7 @@ export default function LeadsList() {
 
     } catch (err) {
       console.error("Error saving lead:", err);
-      alert("Failed to save lead. Check console for details.");
+      setError("Failed to save lead. Check console for details.");
     }
   };
 
@@ -249,15 +245,6 @@ export default function LeadsList() {
     if (!window.confirm("Delete this lead?")) return;
     await deleteLead(companyId, id);
     setLeads(prev => prev.filter(l => l.id !== id));
-  };
-
-  const getStaffNamesFromIds = (ids = []) => {
-    return ids
-      .map((uid) => {
-        const user = staffList.find((u) => u.id === uid);
-        return user ? `${user.firstName} ${user.lastName}` : uid;
-      })
-      .join(", ");
   };
 
   const canModifyLead = (lead) => {
@@ -395,21 +382,7 @@ export default function LeadsList() {
                               cursor: "pointer",
                               textDecoration: "underline"
                             }}
-                            // onClick={async () => {
-                            //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                            //   const token = tokens?.access_token;
 
-                            //   if (!token) {
-                            //     alert("You must login first, from Leads Page");
-                            //     return;
-                            //   }
-
-                            //   const result = await window.electron.downloadFile(f.fileId, null, f.name)
-
-                            //   if (!result?.success) {
-                            //     alert("Download failed");
-                            //   }
-                            // }}
                             onClick={async () => {
                               const result = await window.electron.downloadFile(
                                 f.fileId,
@@ -418,7 +391,7 @@ export default function LeadsList() {
                               );
 
                               if (!result?.success) {
-                                alert("Download failed");
+                                setError("Download failed");
                               }
                             }}
                           >

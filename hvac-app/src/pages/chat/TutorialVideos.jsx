@@ -6,6 +6,10 @@ export default function TutorialsGrid() {
 
   const videos = [
     {
+      title: "Introduction to NimbusX ERP",
+      url: "https://drive.google.com/file/d/152-kHdM2K7RTNNjbC7dCsUXbQQl8B-vD/preview",
+    },
+    {
       title: "Introduction to Project Dashboard",
       url: "https://drive.google.com/file/d/1iRuZl_4YRh3XLqi2Oslusq-1ebkANm3-/preview",
     },
@@ -15,11 +19,11 @@ export default function TutorialsGrid() {
     },
     {
       title: "How to Create a New Tender",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_3/preview",
+      url: "https://drive.google.com/file/d/10A1nt0UW3W8aaW0Uwp_USIW4SWpEXIrQ/preview",
     },
     {
       title: "How to Create a New Award",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_4/preview",
+      url: "https://drive.google.com/file/d/122a8SqZ_ACrPPEoAphwkMd-_BhyyJuoB/preview",
     },
     {
       title: "How to use the Design Tab",
@@ -27,59 +31,59 @@ export default function TutorialsGrid() {
     },
     {
       title: "How to Create a New Bill of Quantities",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1CN_N2QSYHXsOCbDdFjLjfcvy4vHTtS78/preview",
     },
     {
       title: "How to Create a New Material Takeoff Quantity",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/16RVJb070uZ2xiPGLY-OPG0S8InPZp2au/preview",
     },
     {
       title: "How to use the Project Execution Tab",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1kgsVPQ6Cfx9e1wa139dgJHlzGO6IPrAV/preview",
     },
     {
       title: "How to Create a New Purchase Order",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1RoRqWu7ZFFUUQ9ejWW5SbHOqjXM4_XEO/preview",
     },
     {
       title: "How to Create a New Handover Entry",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/17XmSYNnAIjLZH1jo7Z4N-g8Qs9Hj6gm4/preview",
     },
     {
       title: "How to Create a New Logistics Entry",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1R1pEBEPdkvWUSYVdIKkda-mJW5SkeY51/preview",
     },
     {
       title: "How to Create a New Maintenance Entry",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1oD5X4mJbsYUJb6DWJ8vqgQ_LDNWywNMf/preview",
     },
     {
       title: "How to use the QA/QC Reports Tab",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/14TuJbfKdT4tPs3Zxuqi9iEiU537K6cMH/preview",
     },
     {
       title: "How to Create a New Procurement Entry",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1XZO_ueyPVzQe4DNAo0imTXfrX-4Y_EGY/preview",
     },
     {
       title: "How to Create a New Finance Entry",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1rOZ-aMLTfnDbBOD09bjdA2dwew0tlxWR/preview",
     },
     {
       title: "How to Submit a New Support Ticket",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1JdbvSYSa5c3FheMHJ83VomWornoMiojW/preview",
     },
     {
       title: "How to Use the Staff Manager",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1jbBPOkK_hQcpYR4W5cLcRMi-xN2XRy7p/preview",
     },
     {
       title: "How to use the Marketplace Tab",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1Rm976AOgL4k2OeclcHFgJ2uZXjWziscC/preview",
     },
-     {
+    {
       title: "How to use the Iventory Tab",
-      //url: "https://drive.google.com/file/d/VIDEO_ID_5/preview",
+      url: "https://drive.google.com/file/d/1Md1mpQqz9EHwXIgSYgqEwHYBbihlC9FX/preview",
     },
     // ...continue until 30 videos
   ];
@@ -186,6 +190,7 @@ export default function TutorialsGrid() {
 
             {/* VIDEO */}
             <iframe
+              title={activeVideo.title}
               src={activeVideo.url}
               width="100%"
               height="100%"

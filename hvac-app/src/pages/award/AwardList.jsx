@@ -41,12 +41,14 @@ function deepClean(obj) {
 }
 
 export default function AwardPage() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [awards, setAwards] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [, setError] = useState("");
+  
 
   const [formData, setFormData] = useState({
     projectName: "",
@@ -121,7 +123,7 @@ export default function AwardPage() {
   /* ---------------- SAVE / UPDATE ---------------- */
   const handleSave = async () => {
     if (!formData.projectName.trim()) {
-      alert("Project name is required");
+      setError("Project name is required");
       return;
     }
 
@@ -302,21 +304,7 @@ export default function AwardPage() {
                               cursor: "pointer",
                               textDecoration: "underline"
                             }}
-                            // onClick={async () => {
-                            //   const tokens = JSON.parse(localStorage.getItem("googleTokens"));
-                            //   const token = tokens?.access_token;
-
-                            //   if (!token) {
-                            //     alert("You must login first");
-                            //     return;
-                            //   }
-
-                            //   const result = await window.electron.downloadFile(f.fileId, token, f.name)
-
-                            //   if (!result?.success) {
-                            //     alert("Download failed");
-                            //   }
-                            // }}
+                       
                             onClick={async () => {
                               const result = await window.electron.downloadFile(
                                 f.fileId,
@@ -325,7 +313,7 @@ export default function AwardPage() {
                               );
 
                               if (!result?.success) {
-                                alert("Download failed");
+                                setError("Download failed");
                               }
                             }}
                           >

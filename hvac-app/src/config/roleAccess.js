@@ -24,7 +24,7 @@ export const ROLE_ACCESS = {
 
   project_manager: [
     "companydashboard", "dashboard", "boq",
-    "design", "execution", "handover", "mto", "reports"
+    "design", "execution", "handover", "mto", "reports" 
   ],
 
   engineering_manager: [
@@ -40,20 +40,20 @@ export const ROLE_ACCESS = {
   designer: [
     "companydashboard", "dashboard", "award",
     "leads", "design", "boq", "mto",
-    "tender", "execution", "procurement",
-    "finance", "operations"
+    "tender", "execution"
   ],
 
   procurement: [
-    "companydashboard", "dashboard", "mto", "boq", "po"
+    "companydashboard", "dashboard", "mto", "boq", "po", "procurement", "finance"
   ],
 
   finance: [
-    "companydashboard", "dashboard", "mto", "boq", "po"
+    "companydashboard", "dashboard", "mto", "boq", "po", "procurement", "finance"
   ],
 
   operations: [
-    "companydashboard", "dashboard", "mto", "boq", "po"
+    "companydashboard", "dashboard", "mto", "boq", "po", "logistics",
+    "maintenance", "inventory"
   ],
 
   site_tech: [
@@ -69,7 +69,7 @@ export const ROLE_ACCESS = {
   ],
 
   front_desk: [
-    "companydashboard", "dashboard", "handover", "reports"
+    "companydashboard", "dashboard", "handover",
   ],
 
   developer: [
@@ -82,7 +82,7 @@ export const ROLE_ACCESS = {
 
   app_support: [
     "companydashboard", "dashboard",
-    "support_tickets", "marketplace"
+    "support_tickets"
   ],
 
   market_agent: [
@@ -113,7 +113,6 @@ export const ALL_PAGES = [
   "inventory",
   "marketplace",
   "support_tickets",
-  "operations",
   "nimbusx"
 ];
 

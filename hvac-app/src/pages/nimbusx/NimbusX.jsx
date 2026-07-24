@@ -10,7 +10,7 @@ import {
   doc
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
-import { Table, Spinner } from "react-bootstrap";
+import { Table, Spinner, Card } from "react-bootstrap";
 import { getDeveloperRevenue } from "../../firebase/nimbusXService";
 import {
   getBoqMaterials,
@@ -21,15 +21,56 @@ import {
   updateAppSettings
 } from "../../firebase/appSettingsService";
 import { uploadFileToDrive } from "../../helpers/uploadFileToDrive";
+import {
+  activateDeveloperFreeAccess
+} from "../../firebase/developerFreeAccessService";
+
+function CollapsibleSection({ title, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Card className="mb-4 shadow-sm">
+      <Card.Header
+        onClick={() => setOpen(!open)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: 600,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}
+      >
+        <span>{title}</span>
+
+        <span style={{ fontSize: 18 }}>
+          {open ? "▼" : "▶"}
+        </span>
+      </Card.Header>
+
+      {open && (
+        <Card.Body>
+          {children}
+        </Card.Body>
+      )}
+    </Card>
+  );
+}
 
 export default function DeveloperRevenue() {
-  const { userData } = useAuth();
+  const { user, userData } = useAuth();
   const [poRows, setPoRows] = useState([]);
   const [subscriptionRows, setSubscriptionRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [orderRows, setOrderRows] = useState([]);
   const role = userData?.role?.toLowerCase() || "";
   const [materials, setMaterials] = useState([]);
+  const [, setError] = useState("");
+  const [freeAccess, setFreeAccess] = useState({
+    companyId: "",
+    startDate: "",
+    endDate: ""
+  });
   const [settings, setSettings] = useState({
     monthlyFee: 26050,
     materialPriceMarkup: 12,
@@ -114,12 +155,59 @@ export default function DeveloperRevenue() {
   const saveSettings = async () => {
     try {
       await updateAppSettings(settings);
-      alert("Settings updated successfully");
+      setError("Settings updated successfully");
     } catch (err) {
       console.error(err);
-      alert("Failed to update settings");
+      setError("Failed to update settings");
     }
   };
+
+  const activateFreeAccess = async () => {
+
+    try {
+
+      if (
+        !freeAccess.companyId ||
+        !freeAccess.startDate ||
+        !freeAccess.endDate
+      ) {
+        setError("Please complete all fields.");
+        return;
+      }
+
+      if (
+        new Date(freeAccess.endDate) <
+        new Date(freeAccess.startDate)
+      ) {
+        setError("End date cannot be before start date.");
+        return;
+      }
+
+      await activateDeveloperFreeAccess({
+        companyId: freeAccess.companyId,
+        startDate: freeAccess.startDate,
+        endDate: freeAccess.endDate,
+        createdBy: user?.uid || user?.email || "developer"
+      });
+
+      setError("Developer free access activated successfully.");
+
+      setFreeAccess({
+        companyId: "",
+        startDate: "",
+        endDate: ""
+      });
+
+    } catch (err) {
+
+      console.error(err);
+
+      setError("Failed to activate free access.");
+
+    }
+
+  };
+
 
   const handleRateChange = async (
     id,
@@ -175,7 +263,7 @@ export default function DeveloperRevenue() {
         );
       }
 
-      alert("Material updated");
+      setError("Material updated");
 
     } catch (err) {
 
@@ -226,250 +314,250 @@ export default function DeveloperRevenue() {
       <h2 className="mb-4">Developer Revenue Dashboard</h2>
 
       {/* TABLE 1 — PO PROFIT */}
-      <h5>Marketplace Profit</h5>
-      <Table bordered striped hover>
-        <thead className="table-light">
-          <tr>
-            <th>#</th>
-            <th>Company ID</th>
-            <th>Company Name</th>
-            <th>PO ID</th>
-            <th>Profit Accrued (₦)</th>
-            <th>Payment Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          {poRows.map((row, i) => (
-            <tr key={i}>
-              <td>{i + 1}</td>
-              <td>{row.companyId}</td>
-              <td>{row.companyName}</td>
-              <td>{row.poId}</td>
-              <td>{(row.amountPaid || 0).toLocaleString()}</td>
-              <td>
-                {row.paidAt?.toDate
-                  ? row.paidAt.toDate().toLocaleDateString()
-                  : "--"}
-              </td>
-            </tr>
-          ))}
-          <tr className="fw-bold">
-            <td colSpan={4} className="text-end">TOTAL</td>
-            <td>₦{totalProfit.toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </Table>
-
-      {/* TABLE 2 — SUBSCRIPTIONS */}
-      <h5 className="mt-5">Subscription Revenue</h5>
-      <Table bordered striped hover>
-        <thead className="table-light">
-          <tr>
-            <th>#</th>
-            <th>Company ID</th>
-            <th>Company Name</th>
-            <th>Creation Date</th>
-            <th>Subscription Accrued (₦)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {subscriptionRows.map((row, i) => (
-            <tr key={i}>
-              <td>{i + 1}</td>
-              <td>{row.companyId}</td>
-              <td>{row.companyName}</td>
-              <td>
-                {row.createdAt?.toDate
-                  ? row.createdAt.toDate().toLocaleDateString()
-                  : row.createdAt
-                    ? new Date(row.createdAt).toLocaleDateString()
-                    : "--"}
-              </td>
-              <td>{row.amount.toLocaleString()}</td>
-            </tr>
-          ))}
-          <tr className="fw-bold">
-            <td colSpan={4} className="text-end">TOTAL</td>
-            <td>₦{totalSubscription.toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </Table>
-
-      <h5 className="mt-5">Orders Revenue</h5>
-      <Table bordered striped hover>
-        <thead className="table-light">
-          <tr>
-            <th>#</th>
-            <th>Company ID</th>
-            <th>Company Name</th>
-            <th>Order ID</th>
-            <th>Order Date</th>
-            <th>Revenue (₦)</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {orderRows.map((row, i) => (
-            <tr key={i}>
-              <td>{i + 1}</td>
-              <td>{row.companyId}</td>
-              <td>{row.companyName}</td>
-              <td>{row.orderId}</td>
-
-              <td>
-                {row.createdAt?.toDate
-                  ? row.createdAt.toDate().toLocaleDateString()
-                  : row.createdAt
-                    ? new Date(row.createdAt).toLocaleDateString()
-                    : "--"}
-              </td>
-
-              <td>{(row.amount || 0).toLocaleString()}</td>
-            </tr>
-          ))}
-
-          <tr className="fw-bold">
-            <td colSpan={5} className="text-end">TOTAL</td>
-            <td>₦{totalOrders.toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </Table>
-
-      <h5 className="mt-5">
-        Material Price Management
-      </h5>
-
-      {/* <Table bordered striped hover> */}
-      <div className="table-responsive">
-        <table className="table">
-          <thead>
+      <CollapsibleSection title="Marketplace Profit">
+        <Table bordered striped hover>
+          <thead className="table-light">
             <tr>
               <th>#</th>
-              <th style={{ width: "120px" }}>Discipline</th>
-              <th style={{ minWidth: "250px" }}>Name</th>
-              <th style={{ width: "120px" }}>Unit</th>
-              <th style={{ width: "180px" }}>Unit Kg</th>
-              <th style={{ width: "180px" }}>Price</th>
-              <th style={{ width: "180px" }}>Stock</th>
-              <th style={{ width: "200px" }}>Image File ID</th>
-              <th>Save</th>
+              <th>Company ID</th>
+              <th>Company Name</th>
+              <th>PO ID</th>
+              <th>Profit Accrued (₦)</th>
+              <th>Payment Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {poRows.map((row, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{row.companyId}</td>
+                <td>{row.companyName}</td>
+                <td>{row.poId}</td>
+                <td>{(row.amountPaid || 0).toLocaleString()}</td>
+                <td>
+                  {row.paidAt?.toDate
+                    ? row.paidAt.toDate().toLocaleDateString()
+                    : "--"}
+                </td>
+              </tr>
+            ))}
+            <tr className="fw-bold">
+              <td colSpan={4} className="text-end">TOTAL</td>
+              <td>₦{totalProfit.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </Table>
+      </CollapsibleSection>
+
+      {/* TABLE 2 — SUBSCRIPTIONS */}
+      <CollapsibleSection title="Subscription Revenue">
+        <Table bordered striped hover>
+          <thead className="table-light">
+            <tr>
+              <th>#</th>
+              <th>Company ID</th>
+              <th>Company Name</th>
+              <th>Creation Date</th>
+              <th>Subscription Accrued (₦)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subscriptionRows.map((row, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{row.companyId}</td>
+                <td>{row.companyName}</td>
+                <td>
+                  {row.createdAt?.toDate
+                    ? row.createdAt.toDate().toLocaleDateString()
+                    : row.createdAt
+                      ? new Date(row.createdAt).toLocaleDateString()
+                      : "--"}
+                </td>
+                <td>{row.amount.toLocaleString()}</td>
+              </tr>
+            ))}
+            <tr className="fw-bold">
+              <td colSpan={4} className="text-end">TOTAL</td>
+              <td>₦{totalSubscription.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </Table>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Orders Revenue">
+        <Table bordered striped hover>
+          <thead className="table-light">
+            <tr>
+              <th>#</th>
+              <th>Company ID</th>
+              <th>Company Name</th>
+              <th>Order ID</th>
+              <th>Order Date</th>
+              <th>Revenue (₦)</th>
             </tr>
           </thead>
 
           <tbody>
-
-            {materials.map((m, i) => (
-
-              <tr key={m.id}>
-
+            {orderRows.map((row, i) => (
+              <tr key={i}>
                 <td>{i + 1}</td>
+                <td>{row.companyId}</td>
+                <td>{row.companyName}</td>
+                <td>{row.orderId}</td>
 
-                <td style={{ width: "120px" }}>
-                  {m.discipline}
+                <td>
+                  {row.createdAt?.toDate
+                    ? row.createdAt.toDate().toLocaleDateString()
+                    : row.createdAt
+                      ? new Date(row.createdAt).toLocaleDateString()
+                      : "--"}
                 </td>
 
-                {/* NAME */}
-                <td style={{ minWidth: "250px" }}>
-                  <input
-                    className="form-control"
-                    value={m.name || ""}
-                    onChange={(e) =>
-                      setMaterials(prev =>
-                        prev.map(x =>
-                          x.id === m.id
-                            ? { ...x, name: e.target.value }
-                            : x
+                <td>{(row.amount || 0).toLocaleString()}</td>
+              </tr>
+            ))}
+
+            <tr className="fw-bold">
+              <td colSpan={5} className="text-end">TOTAL</td>
+              <td>₦{totalOrders.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </Table>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Material Price Management">
+        {/* <Table bordered striped hover> */}
+        <div className="table-responsive">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th style={{ width: "120px" }}>Discipline</th>
+                <th style={{ minWidth: "250px" }}>Name</th>
+                <th style={{ width: "120px" }}>Unit</th>
+                <th style={{ width: "180px" }}>Unit Kg</th>
+                <th style={{ width: "180px" }}>Price</th>
+                <th style={{ width: "180px" }}>Stock</th>
+                <th style={{ width: "200px" }}>Image File ID</th>
+                <th>Save</th>
+              </tr>
+            </thead>
+
+            <tbody>
+
+              {materials.map((m, i) => (
+
+                <tr key={m.id}>
+
+                  <td>{i + 1}</td>
+
+                  <td style={{ width: "120px" }}>
+                    {m.discipline}
+                  </td>
+
+                  {/* NAME */}
+                  <td style={{ minWidth: "250px" }}>
+                    <input
+                      className="form-control"
+                      value={m.name || ""}
+                      onChange={(e) =>
+                        setMaterials(prev =>
+                          prev.map(x =>
+                            x.id === m.id
+                              ? { ...x, name: e.target.value }
+                              : x
+                          )
                         )
-                      )
-                    }
-                  />
-                </td>
+                      }
+                    />
+                  </td>
 
-                {/* UNIT */}
-                <td style={{ width: "120px" }}>
-                  <input
-                    className="form-control"
-                    value={m.unit || ""}
-                    onChange={(e) =>
-                      setMaterials(prev =>
-                        prev.map(x =>
-                          x.id === m.id
-                            ? { ...x, unit: e.target.value }
-                            : x
+                  {/* UNIT */}
+                  <td style={{ width: "120px" }}>
+                    <input
+                      className="form-control"
+                      value={m.unit || ""}
+                      onChange={(e) =>
+                        setMaterials(prev =>
+                          prev.map(x =>
+                            x.id === m.id
+                              ? { ...x, unit: e.target.value }
+                              : x
+                          )
                         )
-                      )
-                    }
-                  />
-                </td>
+                      }
+                    />
+                  </td>
 
-                {/* UNIT KG */}
-                <td style={{ width: "180px" }}>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={m.unitKg || 0}
-                    onChange={(e) =>
-                      setMaterials(prev =>
-                        prev.map(x =>
-                          x.id === m.id
-                            ? {
-                              ...x,
-                              unitKg: Number(e.target.value)
-                            }
-                            : x
+                  {/* UNIT KG */}
+                  <td style={{ width: "180px" }}>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={m.unitKg || 0}
+                      onChange={(e) =>
+                        setMaterials(prev =>
+                          prev.map(x =>
+                            x.id === m.id
+                              ? {
+                                ...x,
+                                unitKg: Number(e.target.value)
+                              }
+                              : x
+                          )
                         )
-                      )
-                    }
-                  />
-                </td>
+                      }
+                    />
+                  </td>
 
-                {/* RATE */}
-                <td style={{ width: "180px" }}>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={m.price || 0}
-                    onChange={(e) =>
-                      setMaterials(prev =>
-                        prev.map(x =>
-                          x.id === m.id
-                            ? {
-                              ...x,
-                              price: Number(e.target.value)
-                            }
-                            : x
+                  {/* RATE */}
+                  <td style={{ width: "180px" }}>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={m.price || 0}
+                      onChange={(e) =>
+                        setMaterials(prev =>
+                          prev.map(x =>
+                            x.id === m.id
+                              ? {
+                                ...x,
+                                price: Number(e.target.value)
+                              }
+                              : x
+                          )
                         )
-                      )
-                    }
-                  />
-                </td>
+                      }
+                    />
+                  </td>
 
-                {/* STOCK */}
-                <td style={{ width: "180px" }}>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={m.stock || 0}
-                    onChange={(e) =>
-                      setMaterials(prev =>
-                        prev.map(x =>
-                          x.id === m.id
-                            ? {
-                              ...x,
-                              stock: Number(e.target.value)
-                            }
-                            : x
+                  {/* STOCK */}
+                  <td style={{ width: "180px" }}>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={m.stock || 0}
+                      onChange={(e) =>
+                        setMaterials(prev =>
+                          prev.map(x =>
+                            x.id === m.id
+                              ? {
+                                ...x,
+                                stock: Number(e.target.value)
+                              }
+                              : x
+                          )
                         )
-                      )
-                    }
-                  />
-                </td>
+                      }
+                    />
+                  </td>
 
-                {/* IMAGE UPLOAD + PREVIEW */}
-                <td style={{ width: 200 }}>
+                  {/* IMAGE UPLOAD + PREVIEW */}
+                  <td style={{ width: 200 }}>
 
-                  {/* Preview */}
-                  {/* {m.imageFileId && (
+                    {/* Preview */}
+                    {/* {m.imageFileId && (
                   <img
                     src={`https://drive.google.com/uc?id=${m.imageFileId}`}
                     alt="material"
@@ -482,187 +570,256 @@ export default function DeveloperRevenue() {
                     }}
                   />
                 )} */}
-                  {m.imageFileId && (
-                    <img
-                      //src={`https://drive.google.com/thumbnail?id=${m.imageFileId}&sz=w300`}
-                      src={`https://lh3.googleusercontent.com/d/${m.imageFileId}=w300`}
-                      alt="material"
-                      style={{
-                        width: 50,
-                        height: 50,
-                        objectFit: "cover",
-                        borderRadius: 6,
-                        marginBottom: 6
-                      }}
-                      onError={(e) => {
-                        console.log("Failed image:", m.imageFileId);
-                        e.target.style.display = "none";
+                    {m.imageFileId && (
+                      <img
+                        //src={`https://drive.google.com/thumbnail?id=${m.imageFileId}&sz=w300`}
+                        src={`https://lh3.googleusercontent.com/d/${m.imageFileId}=w300`}
+                        alt="material"
+                        style={{
+                          width: 50,
+                          height: 50,
+                          objectFit: "cover",
+                          borderRadius: 6,
+                          marginBottom: 6
+                        }}
+                        onError={(e) => {
+                          console.log("Failed image:", m.imageFileId);
+                          e.target.style.display = "none";
+                        }}
+                      />
+                    )}
+
+                    {/* Upload Button */}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "block", fontSize: 12 }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        try {
+                          const result = await uploadFileToDrive(file);
+
+                          console.log("UPLOAD RESULT:", result);
+
+                          if (!result?.fileId) {
+                            setError("Upload failed: no fileId returned");
+                            return;
+                          }
+
+                          // instantly update UI state
+                          setMaterials(prev =>
+                            prev.map(x =>
+                              x.id === m.id
+                                ? { ...x, imageFileId: result.fileId }
+                                : x
+                            )
+                          );
+
+                          console.log("Saving imageFileId:", result.fileId);
+
+                          await updateMaterialPrice(m.id, {
+                            ...m,
+                            imageFileId: result.fileId,
+                          });
+
+                        } catch (err) {
+                          console.error(err);
+                          setError("Image upload failed");
+                        }
                       }}
                     />
-                  )}
+                  </td>
 
-                  {/* Upload Button */}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "block", fontSize: 12 }}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-
-                      try {
-                        const result = await uploadFileToDrive(file);
-
-                        console.log("UPLOAD RESULT:", result);
-
-                        if (!result?.fileId) {
-                          alert("Upload failed: no fileId returned");
-                          return;
-                        }
-
-                        // instantly update UI state
-                        setMaterials(prev =>
-                          prev.map(x =>
-                            x.id === m.id
-                              ? { ...x, imageFileId: result.fileId }
-                              : x
-                          )
-                        );
-
-                        console.log("Saving imageFileId:", result.fileId);
-
-                        await updateMaterialPrice(m.id, {
-                          ...m,
-                          imageFileId: result.fileId,
-                        });
-
-                      } catch (err) {
-                        console.error(err);
-                        alert("Image upload failed");
+                  {/* SAVE */}
+                  <td>
+                    <button
+                      className="btn btn-success btn-sm"
+                      onClick={() =>
+                        handleRateChange(
+                          m.id,
+                          m
+                        )
                       }
-                    }}
-                  />
-                </td>
+                    >
+                      Save
+                    </button>
+                  </td>
 
-                {/* SAVE */}
-                <td>
-                  <button
-                    className="btn btn-success btn-sm"
-                    onClick={() =>
-                      handleRateChange(
-                        m.id,
-                        m
-                      )
-                    }
-                  >
-                    Save
-                  </button>
-                </td>
+                </tr>
 
-              </tr>
+              ))}
 
-            ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleSection>
 
-          </tbody>
-        </table>
-      </div>
+      <CollapsibleSection title="Developer Free Access">
 
-      <div className="card p-3 mt-4">
+        <div className="row">
 
-        <h4>System Pricing & Subscription Settings</h4>
+          <div className="col-md-4">
 
-        {/* SUBSCRIPTION */}
-        <h6 className="mt-3">Subscription</h6>
+            <label>Company ID</label>
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.monthlyFee}
-          onChange={(e) =>
-            updateField("monthlyFee", Number(e.target.value))
-          }
-          placeholder="Monthly Fee"
-        />
+            <input
+              className="form-control"
+              value={freeAccess.companyId}
+              onChange={(e) =>
+                setFreeAccess({
+                  ...freeAccess,
+                  companyId: e.target.value
+                })
+              }
+            />
 
-        {/* MATERIALS */}
-        <h6 className="mt-3">Materials</h6>
+          </div>
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.materialPriceMarkup}
-          onChange={(e) =>
-            updateField("materialPriceMarkup", Number(e.target.value))
-          }
-          placeholder="Material Markup %"
-        />
+          <div className="col-md-4">
 
-        {/* TAX */}
-        <h6 className="mt-3">Tax</h6>
+            <label>Free Use Start</label>
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.vatPercent}
-          onChange={(e) =>
-            updateField("vatPercent", Number(e.target.value))
-          }
-          placeholder="VAT %"
-        />
+            <input
+              type="date"
+              className="form-control"
+              value={freeAccess.startDate}
+              onChange={(e) =>
+                setFreeAccess({
+                  ...freeAccess,
+                  startDate: e.target.value
+                })
+              }
+            />
 
-        {/* DELIVERY */}
-        <h6 className="mt-3">Delivery (Lagos)</h6>
+          </div>
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.lagosBaseDeliveryFee}
-          onChange={(e) =>
-            updateField("lagosBaseDeliveryFee", Number(e.target.value))
-          }
-          placeholder="Base Fee"
-        />
+          <div className="col-md-4">
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.lagosPerKgFee}
-          onChange={(e) =>
-            updateField("lagosPerKgFee", Number(e.target.value))
-          }
-          placeholder="Per Kg Fee"
-        />
+            <label>Free Use End</label>
 
-        <h6 className="mt-3">Delivery (Outside Lagos)</h6>
+            <input
+              type="date"
+              className="form-control"
+              value={freeAccess.endDate}
+              onChange={(e) =>
+                setFreeAccess({
+                  ...freeAccess,
+                  endDate: e.target.value
+                })
+              }
+            />
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.outsideLagosBaseDeliveryFee}
-          onChange={(e) =>
-            updateField("outsideLagosBaseDeliveryFee", Number(e.target.value))
-          }
-          placeholder="Base Fee"
-        />
+          </div>
 
-        <input
-          type="number"
-          className="form-control mb-2"
-          value={settings.outsideLagosPerKgFee}
-          onChange={(e) =>
-            updateField("outsideLagosPerKgFee", Number(e.target.value))
-          }
-          placeholder="Per Kg Fee"
-        />
+        </div>
 
         <button
-          className="btn btn-primary mt-3"
-          onClick={saveSettings}
+          className="btn btn-success mt-3"
+          onClick={activateFreeAccess}
         >
-          Save All Settings
+          Activate
         </button>
 
-      </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="System Pricing & Subscription Settings">
+        <div className="card p-3 mt-4">
+
+          {/* SUBSCRIPTION */}
+          <h6 className="mt-3">Subscription</h6>
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.monthlyFee}
+            onChange={(e) =>
+              updateField("monthlyFee", Number(e.target.value))
+            }
+            placeholder="Monthly Fee"
+          />
+
+          {/* MATERIALS */}
+          <h6 className="mt-3">Materials</h6>
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.materialPriceMarkup}
+            onChange={(e) =>
+              updateField("materialPriceMarkup", Number(e.target.value))
+            }
+            placeholder="Material Markup %"
+          />
+
+          {/* TAX */}
+          <h6 className="mt-3">Tax</h6>
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.vatPercent}
+            onChange={(e) =>
+              updateField("vatPercent", Number(e.target.value))
+            }
+            placeholder="VAT %"
+          />
+
+          {/* DELIVERY */}
+          <h6 className="mt-3">Delivery (Lagos)</h6>
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.lagosBaseDeliveryFee}
+            onChange={(e) =>
+              updateField("lagosBaseDeliveryFee", Number(e.target.value))
+            }
+            placeholder="Base Fee"
+          />
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.lagosPerKgFee}
+            onChange={(e) =>
+              updateField("lagosPerKgFee", Number(e.target.value))
+            }
+            placeholder="Per Kg Fee"
+          />
+
+          <h6 className="mt-3">Delivery (Outside Lagos)</h6>
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.outsideLagosBaseDeliveryFee}
+            onChange={(e) =>
+              updateField("outsideLagosBaseDeliveryFee", Number(e.target.value))
+            }
+            placeholder="Base Fee"
+          />
+
+          <input
+            type="number"
+            className="form-control mb-2"
+            value={settings.outsideLagosPerKgFee}
+            onChange={(e) =>
+              updateField("outsideLagosPerKgFee", Number(e.target.value))
+            }
+            placeholder="Per Kg Fee"
+          />
+
+          <button
+            className="btn btn-primary mt-3"
+            onClick={saveSettings}
+          >
+            Save All Settings
+          </button>
+
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

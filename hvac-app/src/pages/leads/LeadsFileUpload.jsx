@@ -1,19 +1,18 @@
 //LeadsFileUpload.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db, auth } from "../../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
-function UploadPage({ uploadedFiles = [], onFilesChange }) {
-  const [file, setFile] = useState(null);
-  const [uploadedFileId, setUploadedFileId] = useState("");
-  const [uploadedFileName, setUploadedFileName] = useState("");
+function UploadPage({ uploadedFiles = [], onFilesChange, resetTrigger }) {
+  const [files, setFiles] = useState([]);
   const [googleConnected, setGoogleConnected] = useState(false);
-  const [publicDownloadLink, setPublicDownloadLink] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef(null);
 
   const saveGoogleRefreshToken = async (refreshToken) => {
     try {
@@ -40,6 +39,19 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
     }
   };
 
+  useEffect(() => {
+    if (resetTrigger) {
+      setFiles([]);
+      setSuccess("");
+      setError("");
+      setUploadProgress(0);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }, [resetTrigger]);
+
 
   // ✅ 1
   useEffect(() => {
@@ -49,7 +61,6 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
       if (!user) {
         console.log("❌ No user logged in");
         setGoogleConnected(false);
-        console.log("RENDER googleConnected =", googleConnected);
         return;
       }
 
@@ -66,9 +77,12 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
         setGoogleConnected(false);
       }
     });
-    console.log("RENDER googleConnected =", googleConnected);
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    console.log("RENDER googleConnected =", googleConnected);
+  }, [googleConnected]);
 
   // ✅ 2. Listen for OAuth success event from Electron
   useEffect(() => {
@@ -110,7 +124,7 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
 
 
   const uploadFile = async () => {
-    if (!file) {
+    if (files.length === 0) {
       setError("Please select a file first");
       return;
     }
@@ -122,30 +136,51 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
     const uid = auth.currentUser?.uid;
 
     const formData = new FormData();
-    formData.append("file", file);
+
+    files.forEach(file => {
+
+      formData.append("files", file);
+
+    });
     formData.append("uid", uid);
+
+    setUploadProgress(0);
 
     try {
       const res = await axios.post(
         "http://localhost:4000/upload",
-        formData
+        formData,
+        {
+          onUploadProgress: (progressEvent) => {
+            if (!progressEvent.total) return;
+            const percent = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+
+            setUploadProgress(percent);
+          },
+        }
       );
 
-      const newFile = {
-        fileId: res.data.fileId,
-        name: res.data.fileName,
-        url: res.data.downloadLink,
-      };
-
-      setUploadedFileId(res.data.fileId);
-      setUploadedFileName(res.data.fileName);
-      setPublicDownloadLink(res.data.downloadLink);
-
-      if (onFilesChange) {
-        onFilesChange([...uploadedFiles, newFile]);
+      const newFiles = res.data.files;
+      if (!newFiles || newFiles.length === 0) {
+        throw new Error("No files returned from server.");
       }
 
-      setSuccess(`Uploaded: ${res.data.fileName}`);
+
+      if (onFilesChange) {
+        onFilesChange([...uploadedFiles, ...newFiles]);
+      }
+
+      setSuccess(
+        `${newFiles.length} file(s) uploaded successfully.`
+      );
+
+      setFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
     }
     //catch (err) {
     //   console.error("Upload error:", err);
@@ -164,6 +199,7 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
       );
     } finally {
       setLoading(false);
+      setTimeout(() => setUploadProgress(0), 1000);
     }
   };
 
@@ -172,9 +208,13 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
       const result = await window.electron.downloadFile(fileId, null, fileName);
 
       if (result?.success) {
-        alert("File downloaded successfully");
+        setSuccess("Download started.");
+
+        setTimeout(() => {
+          setSuccess("");
+        }, 3000);
       } else {
-        alert("Download failed");
+        setError("Download failed");
       }
     } catch (err) {
       console.error(err);
@@ -183,7 +223,7 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
 
   return (
     <div>
-      <h2>Upload a File</h2>
+      <h2>Upload Documents</h2>
       {error && (
         <div className="alert alert-danger">
           {error}
@@ -202,6 +242,20 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
         </div>
       )}
 
+      {loading && (
+        <div className="mt-2">
+          <div className="progress">
+            <div
+              className="progress-bar progress-bar-striped progress-bar-animated"
+              role="progressbar"
+              style={{ width: `${uploadProgress}%` }}
+            >
+              {uploadProgress}%
+            </div>
+          </div>
+        </div>
+      )}
+
       {!googleConnected && (
         <button onClick={() => window.api.send("open-google-login")}>
           Connect Google Drive
@@ -211,19 +265,82 @@ function UploadPage({ uploadedFiles = [], onFilesChange }) {
       {googleConnected && (
         <>
           <input
+            disabled={loading}
+            ref={fileInputRef}
             type="file"
-            onChange={(e) => setFile(e.target.files[0])}
+
+            multiple
+
+            onChange={(e) => {
+
+              const selected = Array.from(e.target.files);
+
+              const oversized = selected.find(
+
+                f => f.size > 100 * 1024 * 1024
+
+              );
+
+              if (oversized) {
+                setFiles([]);
+
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = "";
+                }
+
+                setError(`${oversized.name} exceeds 100 MB.`);
+                return;
+              }
+              setError("");
+              setSuccess("");
+
+              setFiles(selected);
+
+            }}
           />
 
-          <button onClick={uploadFile}>
-            Upload
+          {files.length > 0 && (
+            <div className="text-muted mb-2">
+              {files.length} document{files.length !== 1 ? "s" : ""} selected
+            </div>
+          )}
+
+          <button
+            disabled={loading}
+            onClick={uploadFile}
+          >
+            {loading ? "Uploading..." : "Upload"}
           </button>
 
-          {uploadedFileId && (
-            <div style={{ marginTop: "15px" }}>
-              <button onClick={() => downloadFile(uploadedFileId, uploadedFileName)}>
-                Download File
-              </button>
+          {uploadedFiles.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <h5>Uploaded Documents</h5>
+
+              {(uploadedFiles ?? []).map(file => (
+                <div
+                  key={file.fileId}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 8,
+                    padding: 8,
+                    border: "1px solid #ddd",
+                    borderRadius: 5,
+                  }}
+                >
+                  <span>{file.name}</span>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadFile(file.fileId, file.name)
+                    }
+                  >
+                    Download
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </>

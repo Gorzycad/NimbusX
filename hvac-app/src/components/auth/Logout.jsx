@@ -18,7 +18,7 @@ export default function Logout() {
         navigate("/login"); // redirect after sign out
       } catch (err) {
         console.error("Logout error:", err);
-        alert("Failed to sign out: " + (err?.message || err));
+        setError("Failed to sign out: " + (err?.message || err));
       }
     };
     doLogout();

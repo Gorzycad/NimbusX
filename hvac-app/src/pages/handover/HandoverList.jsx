@@ -1,7 +1,6 @@
 // src/pages/handover/HandoverList.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-
 import { getLeads } from "../../firebase/leadsService";
 import {
   addHandover,
@@ -10,10 +9,8 @@ import {
   deleteHandover,
 } from "../../firebase/handoverService";
 import UploadPage from "../leads/LeadsFileUpload";
-import MultiUploadWithDelete from "../leads/LeadsFileUpload";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
-
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { notifyAssignedStaff } from "../leads/LeadsListHelper";
@@ -41,13 +38,14 @@ function deepClean(obj) {
 }
 
 export default function HandoverList() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [handoverList, setHandoverList] = useState([]);
   const [projectList, setProjectList] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
-
+  const [, setError] = useState("");
+  
   const [formData, setFormData] = useState({
     projectName: "",
     fileUpload: [],
@@ -130,7 +128,7 @@ export default function HandoverList() {
   ----------------------------- */
   const handleSave = async () => {
     if (!formData.projectName.trim()) {
-      alert("Project name is required");
+      setError("Project name is required");
       return;
     }
 
@@ -391,7 +389,7 @@ export default function HandoverList() {
                                   );
 
                                   if (!result?.success) {
-                                    alert("Download failed");
+                                    setError("Download failed");
                                   }
                                 }}
                               >

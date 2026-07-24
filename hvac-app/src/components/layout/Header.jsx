@@ -1,18 +1,17 @@
 // src/components/layout/Header.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { doc, getDoc, collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { doc, collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { Building2, Bell, RefreshCw } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export default function Header() {
-  const { user, displayName, companyId, authReady, userData } = useAuth();
+  const { user, displayName, companyId, authReady } = useAuth();
   const [companyName, setCompanyName] = useState("");
   const [companyLogo, setCompanyLogo] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
-  //const [logoSrc, setLogoSrc] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // -----------------------------------------------------
@@ -21,21 +20,14 @@ export default function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const logoSrc = companyLogo?.fileId
-  ? `https://lh3.googleusercontent.com/d/${companyLogo.fileId}=w1000`
-  : null;
-  
-  // const logoSrc = companyLogo?.fileId
-  // ? `https://drive.google.com/thumbnail?id=${companyLogo.fileId}&sz=w1000`
-  // : null;
-  
-  // const logoSrc = companyLogo?.fileId
-  // ? `https://drive.google.com/uc?export=view&id=${companyLogo.fileId}`
-  // : null;
+    ? `https://lh3.googleusercontent.com/d/${companyLogo.fileId}=w1000`
+    : null;
+
 
   useEffect(() => {
     console.log("companyLogo changed:", companyLogo);
     console.log("logoSrc:", logoSrc);
-  }, [companyLogo]);
+  }, [companyLogo, logoSrc]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -72,67 +64,7 @@ export default function Header() {
     return () => unsubscribe();
   }, [user, companyId]);
 
-  // useEffect(() => {
-  //   const loadLogo = async () => {
-  //     setLogoSrc(null);
 
-  //     if (!companyLogo?.fileId || !companyId) return;
-
-  //     if (!window.electron?.getCompanyLogo) {
-  //       console.warn("IPC not available");
-  //       return;
-  //     }
-
-  //     try {
-  //       //const result = window.electron.getCompanyLogo(companyLogo.fileId);
-  //       const result = await window.electron.getCompanyLogo(companyLogo.fileId, companyId);
-
-  //       if (result?.success && result.url) {
-  //         //setLogoSrc(`${result.url}&t=${Date.now()}`);
-  //         setLogoSrc(result.url);
-  //       }
-  //     } catch (err) {
-  //       console.error("Failed to load logo:", err);
-  //     }
-  //   };
-
-  //   loadLogo();
-  // }, [companyLogo?.fileId, companyId]);
-
-  //   useEffect(() => {
-  //   const loadLogo = async () => {
-  //     if (!companyLogo?.fileId || !companyId) return;
-  //     if (!window.electron?.getCompanyLogo) return;
-
-  //     try {
-  //       setLogoSrc(null);
-
-  //       const result = await window.electron.getCompanyLogo(
-  //         companyLogo.fileId,
-  //         companyId
-  //       );
-
-  //       console.log("LOGO RESULT:", result);
-
-  //       if (result?.success && result.url) {
-  //         setLogoSrc(result.url);
-  //       }
-  //     } catch (err) {
-  //       console.error("Failed to load logo:", err);
-  //     }
-  //   };
-
-  //   loadLogo();
-  // }, [companyLogo?.fileId, companyId]);
-
-  // useEffect(() => {
-  //   if (!companyLogo?.fileId) return;
-
-  //   const url = `https://drive.google.com/uc?export=view&id=${companyLogo.fileId}`;
-  //   setLogoSrc(url);
-  // }, [companyLogo?.fileId]);
-
-  
 
   console.log("electron object:", window.electron);
 

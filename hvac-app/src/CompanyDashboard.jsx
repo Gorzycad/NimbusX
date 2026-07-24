@@ -1,39 +1,38 @@
 // src/CompanyDashboard.jsx
-import React, { useState, createContext, useContext, useMemo } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "./contexts/AuthContext";
-import AppLayout from "./components/layout/AppLayout";
-import SubscriptionGuard from "./components/auth/SubscriptionGuard";
-import DashboardHome from "./pages/dashboard/DashboardHome";
-import { useEffect } from "react";
-import { initializeAppSettings } from "./firebase/appSettingsService";
 import { doc, setDoc } from "firebase/firestore";
-import { db } from "./firebase/firebase";
+import { createContext, useContext, useEffect, useMemo } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import SubscriptionGuard from "./components/auth/SubscriptionGuard";
+import AppLayout from "./components/layout/AppLayout";
+import { useAuth } from "./contexts/AuthContext";
+import { initializeAppSettings } from "./firebase/appSettingsService";
+import { auth, db } from "./firebase/firebase";
+import DashboardHome from "./pages/dashboard/DashboardHome";
 
 // helpers
 import { getAllowedPages } from "./helpers/getAllowedPages";
 
 // modules (consider lazy loading later for performance)
-import LeadsList from "./pages/leads/LeadsList";
-import DesignProjects from "./pages/design/DesignProjects";
-import BOQList from "./pages/boq/BOQList";
-import TenderList from "./pages/tender/TenderList";
+import NetworkMonitor from "./components/system/NetworkMonitor";
 import AwardList from "./pages/award/AwardList";
-import MTOList from "./pages/mto/MTOList";
-import POList from "./pages/po/POList";
+import BOQList from "./pages/boq/BOQList";
+import DesignProjects from "./pages/design/DesignProjects";
 import ExecutionOverview from "./pages/execution/ExecutionOverview";
-import ProgressReports from "./pages/reports/ProgressReports";
+import Finance from "./pages/finance/Finance";
 import HandoverList from "./pages/handover/HandoverList";
+import Inventory from "./pages/inventory/Inventory";
+import LeadsList from "./pages/leads/LeadsList";
+import Logistics from "./pages/logistics/Logistics";
+import Maintenance from "./pages/maintenance/Maintenance";
+import Marketplace from "./pages/marketplace/Marketplace";
+import MTOList from "./pages/mto/MTOList";
+import NimbusX from "./pages/nimbusx/NimbusX";
+import POList from "./pages/po/POList";
+import Procurement from "./pages/procurement/Procurement";
+import ProgressReports from "./pages/reports/ProgressReports";
 import Staff from "./pages/staff/Staff";
 import Support from "./pages/support/Support";
-import Inventory from "./pages/inventory/Inventory";
-import Logistics from "./pages/logistics/Logistics";
-import Marketplace from "./pages/marketplace/Marketplace";
-import Procurement from "./pages/procurement/Procurement";
-import Finance from "./pages/finance/Finance";
-import Maintenance from "./pages/maintenance/Maintenance";
-import NimbusX from "./pages/nimbusx/NimbusX";
-import NetworkMonitor from "./components/system/NetworkMonitor";
+import TenderList from "./pages/tender/TenderList";
 
 // Context
 const CompanyContext = createContext();
@@ -41,6 +40,9 @@ export const useCompany = () => useContext(CompanyContext);
 
 export default function CompanyDashboard() {
   const { role, userData, user } = useAuth();
+  const location = useLocation();
+
+  
 
   useEffect(() => {
     initializeAppSettings();
@@ -74,9 +76,15 @@ export default function CompanyDashboard() {
 
   useEffect(() => {
 
-    if (!user || !companyId) return;
+    if (
+      !user ||
+      !companyId ||
+      userData?.approved !== true
+    ) {
+      return;
+    }
 
-    if (!["company_admin", "developer"].includes(role)) return;
+    //if (!["company_admin", "developer"].includes(role)) return;
 
     const today = new Date();
 
@@ -124,14 +132,47 @@ export default function CompanyDashboard() {
 
     markAttendance();
 
-  }, [user, companyId, role]);
+  }, [user, companyId, role, userData?.approved]);
+
+  if (
+    userData &&
+    userData.approved === false
+  ) {
+    return (
+      <div
+        className="d-flex justify-content-center align-items-center"
+        style={{ minHeight: "100vh" }}
+      >
+        <div className="card p-4 text-center">
+          <h3>Registration Pending Approval</h3>
+
+          <p>
+            Please inform your Company Administrator
+            to approve your registration before using
+            NimbusX.
+          </p>
+
+          <p>
+            Your account has been created successfully
+            but is awaiting approval.
+          </p>
+        </div>
+        <button
+          onClick={() => auth.signOut()}
+          className="btn btn-secondary"
+        >
+          Logout
+        </button>
+      </div>
+    );
+  }
 
   return (
     <CompanyContext.Provider value={contextValue}>
       <NetworkMonitor />
       <AppLayout>
         <SubscriptionGuard>
-          <Routes>
+          <Routes key={`${location.pathname}-${location.state?.refresh ?? 0}`}>
 
             {/* ================= DASHBOARD HOME ================= */}
             <Route path="/" element={<DashboardHome />} />

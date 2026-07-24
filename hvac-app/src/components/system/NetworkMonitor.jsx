@@ -1,61 +1,48 @@
 // src/components/system/NetworkMonitor.jsx
 import { useEffect } from "react";
 
-export default function NetworkMonitor() {
-
+export default function NetworkMonitor({ onStatusChange }) {
   useEffect(() => {
+    let lastStatus = navigator.onLine ? "online" : "offline";
 
-    let isOffline = false;
-
-    const showOffline = () => {
-      if (!isOffline) {
-        isOffline = true;
-        alert("Check your internet connection");
+    const updateStatus = (status) => {
+      if (status !== lastStatus) {
+        lastStatus = status;
+        onStatusChange?.(status);
       }
     };
 
-    const showOnline = () => {
-      if (isOffline) {
-        isOffline = false;
-        alert("Internet connection restored");
-      }
-    };
+    const handleOffline = () => updateStatus("offline");
+    const handleOnline = () => updateStatus("online");
 
-    // Browser offline detection
-    window.addEventListener("offline", showOffline);
+    // initial state
+    updateStatus(navigator.onLine ? "online" : "offline");
 
-    // Browser online detection
-    window.addEventListener("online", showOnline);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
 
-    // Active internet check
+    // periodic deep check (important fallback)
     const checkInternet = async () => {
-
       try {
-
         await fetch("https://www.google.com/favicon.ico", {
           mode: "no-cors",
           cache: "no-cache",
         });
 
-        showOnline();
-
-      } catch (err) {
-
-        showOffline();
+        updateStatus("online");
+      } catch {
+        updateStatus("offline");
       }
     };
 
-    // Check every 15 seconds
     const interval = setInterval(checkInternet, 15000);
 
     return () => {
       clearInterval(interval);
-
-      window.removeEventListener("offline", showOffline);
-      window.removeEventListener("online", showOnline);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
     };
-
-  }, []);
+  }, [onStatusChange]);
 
   return null;
 }

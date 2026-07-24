@@ -46,10 +46,12 @@ export const getProjectNames = async (companyId) => {
   }));
 };
 
-export default {
+const leadsService = {
   addLead,
   updateLead,
   deleteLead,
   getLeads,
   getProjectNames,
 };
+
+export default leadsService;

@@ -1,24 +1,22 @@
+//src/components/auth/SubscriptionGuard.jsx
 import React from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function SubscriptionGuard({ children }) {
-  const { userData } = useAuth();
+  const { userData, isDeveloperFreeCompany } = useAuth();
   const location = useLocation();
-
-  // Companies that never require subscription
-  const FREE_COMPANIES = new Set(["15005", "75312"]);
+  
+  
 
   // Allow staff page always
   const isStaffPage = location.pathname.includes("/staff");
 
-  // Check if user's company is exempt
-  const isFreeCompany = FREE_COMPANIES.has(
-    String(userData?.companyId || "")
-  );
+  
+  
 
   // Exempt companies always have access
-  if (isFreeCompany) {
+  if (isDeveloperFreeCompany) {
     return children;
   }
 

@@ -1,5 +1,5 @@
 // src/pages/procurement/ProcurementPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { collection, getDocs } from "firebase/firestore";
 import {
@@ -27,7 +27,7 @@ const emptyRow = () => ({
   Main Component
 -------------------------------- */
 export default function ProcurementPage() {
-  const { companyId, user, role, displayName } = useAuth();
+  const { companyId, user, role } = useAuth();
   const [activeTab, setActiveTab] = useState("requisition");
   const [staffList, setStaffList] = useState([]);
   const [records, setRecords] = useState([]);
@@ -41,7 +41,8 @@ export default function ProcurementPage() {
   const [staffItems, setStaffItems] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  const [, setError] = useState("");
+ 
   //const [staffAssigned, setStaffAssigned] = useState([]);
   const [formData, setFormData] = useState({
     projectName: "",
@@ -100,7 +101,6 @@ export default function ProcurementPage() {
     setEditingId(null);
   }, [activeTab]);
 
-  const staffAssignedIds = formData.staffAssigned;
 
   const staffNameMap = useMemo(() => {
     const map = {};
@@ -128,7 +128,7 @@ export default function ProcurementPage() {
   ----------------------------- */
   const handleSave = async () => {
     if (!formData.staffAssigned || formData.staffAssigned.length === 0) {
-      alert("Please assign at least one staff");
+      setError("Please assign at least one staff");
       return;
     }
 
@@ -195,11 +195,11 @@ export default function ProcurementPage() {
       );
       setRecords(refreshed || []);
 
-      alert("Saved successfully");
+      setError("Saved successfully");
 
     } catch (err) {
       console.error(err);
-      alert("Save failed");
+      setError("Save failed");
     }
   };
 
@@ -256,7 +256,7 @@ export default function ProcurementPage() {
 
     } catch (err) {
       console.error(err);
-      alert("Delete failed");
+      setError("Delete failed");
     }
   };
 

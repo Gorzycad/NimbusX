@@ -48,7 +48,7 @@ export default function Login() {
       // Enforce email verification
       if (!firebaseUser.emailVerified) {
         await signOut(auth);
-        alert("Please verify your email before logging in.");
+        setError("Please verify your email before logging in.");
         setLoading(false);
         return;
       }
@@ -125,7 +125,7 @@ export default function Login() {
       }
 
       if (!companyId || !userData) {
-        alert("User not found in any company. Please contact your admin.");
+        setError("User not found in any company. Please contact your admin.");
         await signOut(auth);
         setLoading(false);
         return;

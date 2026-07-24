@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { db } from "../../firebase/firebase";
 import {
@@ -22,7 +22,8 @@ export default function SupportPage() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
-
+  const [, setError] = useState("");
+  
   // 👇 PASTE RIGHT HERE
   const getStaffName = () => {
     if (!user) return "Unknown User";
@@ -45,9 +46,13 @@ export default function SupportPage() {
     loadUserProfile();
   }, [authUser]);
 
+  const canManageSupport =
+    ["developer","app_support"].includes(role);
+
   // Set selected company (for normal users or developer)
   useEffect(() => {
-    if (role === "developer") {
+    
+    if (canManageSupport) {
       setLoading(true);
       const loadCompanies = async () => {
         const snap = await getDocs(collection(db, "companies"));
@@ -60,16 +65,16 @@ export default function SupportPage() {
       setSelectedCompanyId(user.companyId);
       setLoading(false);
     }
-  }, [role, user]);
+  }, [canManageSupport, user]);
 
   // Load tickets for given company or all companies
-  const loadTickets = async (companyId) => {
+  const loadTickets = useCallback(async (companyId) => {
     if (!companyId) return;
     setLoading(true);
 
     let ticketsList = [];
 
-    if (role === "developer") {
+    if (canManageSupport) {
       const allCompaniesSnap = await getDocs(collection(db, "companies"));
       for (const companyDoc of allCompaniesSnap.docs) {
         const q = query(
@@ -101,19 +106,19 @@ export default function SupportPage() {
 
     setTickets(ticketsList);
     setLoading(false);
-  };
+  }, [canManageSupport, role, user]);
 
   // Reload tickets when selectedCompanyId changes or user loads
   useEffect(() => {
     if (role !== "market_agent" && selectedCompanyId) loadTickets(selectedCompanyId);
-  }, [role, selectedCompanyId, user]);
+  }, [role, selectedCompanyId, user, loadTickets]);
 
   // Open a new ticket
   const handleOpenTicket = async (category = "general") => {
-    if (!newMessage.trim()) return alert("Message is required");
+    if (!newMessage.trim()) return setError("Message is required");
 
-    const companyIdToUse = role === "developer" ? selectedCompanyId : user?.companyId;
-    if (!companyIdToUse) return alert("User companyId is missing. Tickets cannot be submitted.");
+    const companyIdToUse = canManageSupport ? selectedCompanyId : user?.companyId;
+    if (!companyIdToUse) return setError("User companyId is missing. Tickets cannot be submitted.");
 
     const ticketData = {
       userId: user.uid,
@@ -123,7 +128,7 @@ export default function SupportPage() {
         messages: [
           {
           senderId: user.uid,
-          senderName: getStaffName(), // ✅ FIXED
+          senderName: getStaffName(canManageSupport), // ✅ FIXED
           text: newMessage,
           createdAt: Date.now(), //✅ FIXED
         },
@@ -192,7 +197,7 @@ export default function SupportPage() {
       <h2>Support Tickets</h2>
 
       {/* Developer: select company */}
-      {role === "developer" && companies.length > 0 && (
+      {canManageSupport && companies.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <label>Select Company: </label>
           <select
@@ -225,7 +230,7 @@ export default function SupportPage() {
       )}
 
       {/* Developer ticket creation */}
-      {role === "developer" && companies.length > 0 && (
+      {canManageSupport && companies.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <h4>Open a New Ticket</h4>
           <textarea

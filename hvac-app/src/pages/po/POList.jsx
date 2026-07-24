@@ -1,33 +1,26 @@
 //src/pages/po/POList.jsx
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { getBOQs } from "../../firebase/boqService";
 import { addPO, getPOs, updatePO, deletePO } from "../../firebase/poService";
 import { getLeads } from "../../firebase/leadsService";
 import StaffSelector from "../../components/layout/StaffSelector";
 import { getRolesForSelector } from "../../config/roleAccess";
-import { getBoqs } from "../../firebase/boqService";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { notifyAssignedStaff } from "../leads/LeadsListHelper";
 import { serverTimestamp } from "firebase/firestore";
 import { useMemo } from "react";
 import { getMtos } from "../../firebase/mtoService";
-
-function cleanData(data) {
-  return Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
-}
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 // ---------------------------- //
 export default function PurchaseOrderPage() {
-  const { companyId, user, role, displayName } = useAuth();
-  const [pos, setPos] = useState([]);
-  const [boqTitle, setBoqTitle] = useState("");
-  const [boqId, setBoqId] = useState(null);
+  const { companyId, user, role } = useAuth();
+  const [, setPos] = useState([]);
   const [projectList, setProjectList] = useState([]);
-  const [mtoTables, setMtoTables] = useState([]);
+  const [, setMtoTables] = useState([]);
   const [savedPO, setSavedPO] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [mtoList, setMtoList] = useState([]);
@@ -35,6 +28,7 @@ export default function PurchaseOrderPage() {
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
+  const [error, setError] = useState("");
 
   /* ---------------- LOAD PRODUCTS ---------------- */
   useEffect(() => {
@@ -160,65 +154,10 @@ export default function PurchaseOrderPage() {
     return `PO-${year}-${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
-
-  // ----------------------------
-  // Handle table edits
-  const updateCell = (index, key, value) => {
-    const updated = [...formData.tableData];
-    updated[index][key] = value;
-    setFormData({ ...formData, tableData: updated });
-  };
-
-  const addRow = () => {
-    const newRow = { description: "", qty: "", unit: "", rate: "", total: "" };
-    setFormData({ ...formData, tableData: [...formData.tableData, newRow] });
-  };
-
-  const removeRow = (i) => {
-    const updated = formData.tableData.filter((_, idx) => idx !== i);
-    setFormData({ ...formData, tableData: updated });
-  };
-
-  const calculateBoqTotal = (boq) => {
-    const all = [
-      ...(boq.mechanical || []),
-      ...(boq.electrical || []),
-      ...(boq.plumbing || []),
-    ];
-
-    return all.reduce((sum, item) => {
-      const qty = Number(item.qty || 0);
-      const rate = Number(String(item.rate || 0).replace(/,/g, ""));
-      return sum + qty * rate;
-    }, 0);
-  };
-
-  // ----------------------------
-  // SEND TO SUPPLIER BUTTON
-  const handleSendToMarketplace = async () => {
-    if (!formData.projectName) return alert("Select project");
-    //if (!boqId) return alert("Select BOQ");
-
-    if (!formData.recipientAddress.trim()) {
-      return alert("Enter recipient address");
-    }
-
-    if (!formData.recipientPhone.trim()) {
-      return alert("Enter recipient contact number");
-    }
-
-
-    const creatorName = staffNameMap[user.uid] || "Unknown User";
-    const poId = generatePOId();
-    // const boq = boqList.find(b => b.id === boqId);
-    // const totalAmount = calculateBoqTotal(boq);
+  const calculateDeliveryFee = () => {
     const mto = mtoList.find(m => m.id === selectedMtoId);
-    if (!mto) return alert("Select MTO");
 
-
-    // ----------------------------------------------------
-    // DELIVERY FEE CALCULATION
-    // ----------------------------------------------------
+    if (!mto) return 0;
 
     const allRows = [
       ...(mto.mechanical || []),
@@ -228,52 +167,60 @@ export default function PurchaseOrderPage() {
 
     let totalWeight = 0;
 
-    for (const row of allRows) {
-      const qty = Number(row.qty || 0);
+    allRows.forEach(row => {
+      const normalize = str =>
+        (str || "").toLowerCase().replace(/\s+/g, "");
 
-      // Match product using description/item/sku
-      const normalize = (str = "") =>
-        str.toLowerCase().replace(/\s+/g, "").trim();
-
-      const matchedProduct = products.find(
+      const product = products.find(
         p => normalize(p.sku) === normalize(row.item)
       );
 
-      const unitKg = Number(matchedProduct?.unitKg || 0);
+      totalWeight +=
+        Number(row.qty || 0) *
+        Number(product?.unitKg || 0);
+    });
 
-      console.log({
-        rowItem: row.item,
-        matchedProduct,
-        unitKg,
-        qty,
-      });
-
-      totalWeight += qty * unitKg;
-
-      console.table({
-        rowItem: row.item,
-        matchedProduct: matchedProduct?.item,
-        unitKg,
-        qty,
-        totalWeight: qty * unitKg,
-      });
-
-      console.log("ALL PRODUCTS:", products);
-    }
-
-    // BASE FEE
     const baseFee =
       formData.deliveryLocation === "Other States"
         ? 90000
         : 10000;
 
-    // COST PER KG
     const perKg =
       formData.deliveryLocation === "Other States"
         ? 2000
         : 500;
 
-    const deliveryFee = baseFee + (totalWeight * perKg);
+    return {
+      totalWeight,
+      deliveryFee: baseFee + totalWeight * perKg,
+    };
+  };
+
+  // ----------------------------
+  // SEND TO SUPPLIER BUTTON
+  const handleSendToMarketplace = async () => {
+    if (!formData.projectName) return setError("Select project");
+    //if (!boqId) return alert("Select BOQ");
+
+    if (!formData.recipientAddress.trim()) {
+      return setError("Enter recipient address");
+    }
+
+    if (!formData.recipientPhone.trim()) {
+      return setError("Enter recipient contact number");
+    }
+
+    const mto = mtoList.find(m => m.id === selectedMtoId);
+    if (!mto) {
+      setError("Please select an MTO.");
+      return;
+    }
+
+    const poId = generatePOId();
+
+
+
+    const { totalWeight, deliveryFee } = calculateDeliveryFee();
 
     const calculateMtoTotal = (mto) => {
       const allRows = [
@@ -293,12 +240,6 @@ export default function PurchaseOrderPage() {
       }, 0);
     };
 
-    // Clean formData BEFORE sending it to Firestore
-    const cleanedFormData = {
-      ...cleanData(formData),
-      staffAssigned: staffAssignedIds, // store IDs, not names
-
-    };
 
     const totalAmount = calculateMtoTotal(mto);
     const grandTotal = totalAmount + deliveryFee;
@@ -407,10 +348,221 @@ export default function PurchaseOrderPage() {
     );
 
 
+  }
+
+  const exportToExcel = () => {
+    const mto = mtoList.find(m => m.id === selectedMtoId);
+
+    if (!mto) {
+      setError("Please select an MTO.");
+      return;
+    }
+
+    const rows = [];
+
+    rows.push({
+      "PO ID": generatePOId(),
+      Project: formData.projectName,
+      MTO: mto.title,
+      Address: formData.recipientAddress,
+      Phone: formData.recipientPhone,
+      Delivery: formData.deliveryLocation,
+    });
+
+    rows.push({});
+
+    const sections = [
+      { title: "Mechanical", data: mto.mechanical || [] },
+      { title: "Electrical", data: mto.electrical || [] },
+      { title: "Plumbing", data: mto.plumbing || [] },
+    ];
+
+    let materialTotal = 0;
+
+    sections.forEach(section => {
+      rows.push({
+        Discipline: section.title,
+      });
+
+      section.data.forEach(row => {
+        const total =
+          Number(row.qty || 0) *
+          Number(row.rate || 0);
+
+        materialTotal += total;
+
+        rows.push({
+          Item: row.item,
+          Qty: row.qty,
+          Unit: row.unit,
+          Rate: row.rate,
+          Total: total,
+        });
+      });
+
+      rows.push({});
+    });
+
+    rows.push({
+      Item: "Material Total",
+      Total: materialTotal,
+    });
+
+    rows.push({
+      Item: "Delivery Fee",
+      Total: calculateDeliveryFee(),
+    });
+
+    rows.push({
+      Item: "Grand Total",
+      Total: materialTotal + calculateDeliveryFee(),
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const wb = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      ws,
+      "Purchase Order"
+    );
+
+    XLSX.writeFile(
+      wb,
+      `${formData.projectName || "PO"}_Purchase_Order.xlsx`
+    );
   };
 
+  const exportToPDF = () => {
+    const mto = mtoList.find(m => m.id === selectedMtoId);
 
+    if (!mto) {
+      setError("Please select an MTO.");
+      return;
+    }
 
+    const doc = new jsPDF("landscape");
+
+    doc.setFontSize(16);
+    doc.text("PURCHASE ORDER", 14, 15);
+
+    doc.setFontSize(10);
+
+    doc.text(
+      `Project: ${formData.projectName}`,
+      14,
+      25
+    );
+
+    doc.text(
+      `MTO: ${mto.title}`,
+      14,
+      31
+    );
+
+    doc.text(
+      `Recipient: ${formData.recipientAddress}`,
+      14,
+      37
+    );
+
+    doc.text(
+      `Phone: ${formData.recipientPhone}`,
+      14,
+      43
+    );
+
+    doc.text(
+      `Delivery: ${formData.deliveryLocation}`,
+      14,
+      49
+    );
+
+    const sections = [
+      {
+        title: "Mechanical",
+        rows: mto.mechanical || [],
+      },
+      {
+        title: "Electrical",
+        rows: mto.electrical || [],
+      },
+      {
+        title: "Plumbing",
+        rows: mto.plumbing || [],
+      },
+    ];
+
+    let y = 58;
+    let materialTotal = 0;
+
+    sections.forEach(section => {
+      if (!section.rows.length) return;
+
+      doc.setFontSize(12);
+      doc.text(section.title, 14, y);
+
+      const body = section.rows.map((r, i) => {
+        const total =
+          Number(r.qty || 0) *
+          Number(r.rate || 0);
+
+        materialTotal += total;
+
+        return [
+          i + 1,
+          r.item,
+          r.qty,
+          r.unit,
+          r.rate,
+          total,
+        ];
+      });
+
+      autoTable(doc, {
+        startY: y + 3,
+        head: [[
+          "#",
+          "Item",
+          "Qty",
+          "Unit",
+          "Rate",
+          "Total",
+        ]],
+        body,
+        styles: {
+          fontSize: 8,
+        },
+      });
+
+      y = doc.lastAutoTable.finalY + 10;
+    });
+
+    const deliveryFee = calculateDeliveryFee();
+
+    doc.text(
+      `Material Total: ${materialTotal.toLocaleString()}`,
+      14,
+      y
+    );
+
+    doc.text(
+      `Delivery Fee: ${deliveryFee.toLocaleString()}`,
+      14,
+      y + 8
+    );
+
+    doc.text(
+      `Grand Total: ${(materialTotal + deliveryFee).toLocaleString()}`,
+      14,
+      y + 16
+    );
+
+    doc.save(
+      `${formData.projectName || "PO"}_Purchase_Order.pdf`
+    );
+  };
 
   // ----------------------------
   // Reset form
@@ -450,14 +602,6 @@ export default function PurchaseOrderPage() {
     setPos(prev => prev.filter(t => t.id !== id));
   };
 
-  const getStaffNamesFromIds = (ids = []) => {
-    return ids
-      .map((uid) => {
-        const user = staffList.find((u) => u.id === uid);
-        return user ? `${user.firstName} ${user.lastName}` : uid;
-      })
-      .join(", ");
-  };
 
   const canModifyLead = (item) => {
     if (!user) return false;
@@ -630,10 +774,35 @@ export default function PurchaseOrderPage() {
           </div>
         </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="alert alert-danger">
+            {error}
+          </div>
+        )}
+
         {/* Save + Send to Supplier */}
-        <div>
-          <button className="btn btn-success" onClick={handleSendToMarketplace}>
+        <div className="d-flex gap-2">
+
+          <button
+            className="btn btn-success"
+            onClick={handleSendToMarketplace}
+          >
             Send PO to Marketplace
+          </button>
+
+          <button
+            className="btn btn-outline-success"
+            onClick={exportToExcel}
+          >
+            Export Excel
+          </button>
+
+          <button
+            className="btn btn-outline-danger"
+            onClick={exportToPDF}
+          >
+            Export PDF
           </button>
 
         </div>

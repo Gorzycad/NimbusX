@@ -7,6 +7,7 @@ function UploadPage() {
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [publicDownloadLink, setPublicDownloadLink] = useState("");
+  const [error, setError] = useState("");
 
   // Check if OAuth login was successful
   useEffect(() => {
@@ -18,8 +19,8 @@ function UploadPage() {
 
   // Upload file
   const uploadFile = async () => {
-    if (!file) return alert("Please select a file first");
-    if (!isLoggedIn) return alert("You must login first from src pages");
+    if (!file) return setError("Please select a file first");
+    if (!isLoggedIn) return setError("You must login first from src pages");
 
     const formData = new FormData();
     formData.append("file", file);
@@ -32,10 +33,10 @@ function UploadPage() {
       setUploadedFileId(res.data.fileId);
       setUploadedFileName(res.data.fileName);
       setPublicDownloadLink(res.data.downloadLink);
-      alert(`Uploaded: ${res.data.fileName}`);
+      setError(`Uploaded: ${res.data.fileName}`);
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Upload failed");
+      setError("Upload failed");
     }
   };
 
@@ -43,7 +44,7 @@ function UploadPage() {
     <div>
       <h2>Upload a File</h2>
 
-      
+
       {!isLoggedIn && (
         <button
           onClick={() => {

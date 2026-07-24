@@ -68,9 +68,11 @@ export const getProcurementRecords = async (companyId, tab) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-export default {
+const procurementService = {
   addProcurementRecord,
   updateProcurementRecord,
   deleteProcurementRecord,
   getProcurementRecords,
 };
+
+export default procurementService;

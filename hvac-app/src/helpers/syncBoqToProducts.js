@@ -7,8 +7,10 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../firebase/firebase";
+import { useEffect, useState } from "react";
 
 export const syncBoqToProducts = async () => {
+  const [error, setError] = useState("");
 
   // =========================
   // LOAD LIVE BOQ MATERIALS
@@ -69,7 +71,7 @@ export const syncBoqToProducts = async () => {
   console.log(
     "✅ BOQ MATERIALS synced to products"
   );
-  alert(
+  setError(
     "BOQ Materials synced successfully to Marketplace products."
   );
 };
